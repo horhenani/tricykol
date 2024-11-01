@@ -1,0 +1,77 @@
+import React, { useState, useRef } from "react";
+import {
+  View,
+  StyleSheet,
+  StatusBar,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useAuth } from "@context/AuthContext";
+import DashboardHeader from "@components/DashboardHeader";
+import StyledMapView from "@components/map/StyledMapView";
+import { colors } from "@constants/globalStyles";
+import BookButton from "@components/bookings/BookButton";
+import BookingBottomSheet from "@components/bookings/BookingButtomSheet";
+import { Portal } from "react-native-paper";
+// import {
+//   GestureHandlerRootView,
+//   GestureDetector,
+//   Gesture,
+// } from "react-native-gesture-handler";
+// import { runOnJS } from "react-native-reanimated";
+
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+
+const Dashboard = () => {
+  const { user } = useAuth();
+  const mapRef = useRef(null);
+  const [region, setRegion] = useState(null);
+  const [isBookingModalVisible, setIsBookingModalVisible] = useState(false);
+
+  const handleRegionChange = (newRegion) => {
+    setRegion(newRegion);
+  };
+
+  const handleBookPress = () => {
+    setIsBookingModalVisible(true);
+  };
+
+  // const closeModal = Gesture.Tap()
+  //   .numberOfTaps(1)
+  //   .onStart(() => {
+  //     "worklet";
+  //     runOnJS(setIsBookingModalVisible)(false);
+  //   });
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <BottomSheetModalProvider>
+        <SafeAreaProvider>
+          <StatusBar translucent backgroundColor="transparent" />
+          <View style={styles.container}>
+            <StyledMapView ref={mapRef} onRegionChange={handleRegionChange} />
+            <DashboardHeader />
+            <BookButton onPress={handleBookPress} />
+
+            <Portal>
+              <BookingBottomSheet
+                visible={isBookingModalVisible}
+                onDismiss={() => setIsBookingModalVisible(false)}
+              />
+            </Portal>
+          </View>
+        </SafeAreaProvider>
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});
+
+export default Dashboard;

@@ -1,0 +1,43 @@
+import React from "react";
+import { StyleSheet, Dimensions } from "react-native";
+import MapView, { PROVIDER_GOOGLE } from "react-native-maps";
+
+const { width, height } = Dimensions.get("window");
+
+const ASPECT_RATIO = width / height;
+const LATITUDE_DELTA = 0.0922;
+const LONGITUDE_DELTA = LATITUDE_DELTA * ASPECT_RATIO;
+
+const StyledMapView = React.forwardRef(
+  ({ initialRegion, onRegionChange, children, ...props }, ref) => {
+    const defaultRegion = {
+      latitude: 15.6626, // Paniqui
+      longitude: 120.5814,
+      latitudeDelta: LATITUDE_DELTA,
+      longitudeDelta: LONGITUDE_DELTA,
+    };
+
+    return (
+      <MapView
+        ref={ref}
+        provider={PROVIDER_GOOGLE}
+        style={styles.map}
+        initialRegion={initialRegion || defaultRegion}
+        onRegionChangeComplete={onRegionChange}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
+        {...props}
+      >
+        {children}
+      </MapView>
+    );
+  },
+);
+
+const styles = StyleSheet.create({
+  map: {
+    ...StyleSheet.absoluteFillObject,
+  },
+});
+
+export default StyledMapView;

@@ -1,0 +1,123 @@
+import { useState, useEffect } from "react";
+import * as Location from "expo-location";
+import { Alert, Platform } from "react-native";
+
+export const useLocationService = () => {
+  const [location, setLocation] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [isPermissionGranted, setIsPermissionGranted] = useState(false);
+
+  const requestLocationPermission = async () => {
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status !== "granted") {
+        setErrorMsg("Location permission denied");
+        setIsPermissionGranted(false);
+
+        Alert.alert(
+          "Location Required",
+          "This app needs access to location to provide ride-hailing services. Please enable location services in your settings.",
+          [
+            {
+              text: "Open Settings",
+              onPress: () =>
+                Platform.OS === "ios"
+                  ? Linking.openURL("app-settings:")
+                  : Linking.openSettings(),
+            },
+            { text: "Cancel", style: "cancel" },
+          ],
+        );
+        return false;
+      }
+
+      setIsPermissionGranted(true);
+      return true;
+    } catch (err) {
+      setErrorMsg("Error requesting location permission");
+      console.error("Permission error:", err);
+      return false;
+    }
+  };
+
+  const getCurrentLocation = async () => {
+    try {
+      const permission = await requestLocationPermission();
+      if (!permission) return;
+
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+        maximumAge: 10000,
+      });
+
+      setLocation(currentLocation);
+      return currentLocation;
+    } catch (err) {
+      setErrorMsg("Error getting location");
+      console.error("Location error:", err);
+      return null;
+    }
+  };
+
+  // Watch location updates
+  const startLocationUpdates = async () => {
+    try {
+      const permission = await requestLocationPermission();
+      if (!permission) return;
+
+      // Remove any existing subscriptions
+      if (locationSubscription) {
+        locationSubscription.remove();
+      }
+
+      const subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          distanceInterval: 10, // Update every 10 meters
+          timeInterval: 5000, // Update every 5 seconds
+        },
+        (newLocation) => {
+          setLocation(newLocation);
+        },
+      );
+
+      return subscription;
+    } catch (err) {
+      setErrorMsg("Error watching location");
+      console.error("Watch location error:", err);
+      return null;
+    }
+  };
+
+  // Initialize location services when component mounts
+  useEffect(() => {
+    let locationSubscription = null;
+
+    const initializeLocation = async () => {
+      const permission = await requestLocationPermission();
+      if (permission) {
+        await getCurrentLocation();
+        locationSubscription = await startLocationUpdates();
+      }
+    };
+
+    initializeLocation();
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (locationSubscription) {
+        locationSubscription.remove();
+      }
+    };
+  }, []);
+
+  return {
+    location,
+    errorMsg,
+    isPermissionGranted,
+    getCurrentLocation,
+    requestLocationPermission,
+    startLocationUpdates,
+  };
+};
