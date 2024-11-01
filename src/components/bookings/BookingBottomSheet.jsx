@@ -21,7 +21,7 @@ const BookingBottomSheet = ({ visible, onDismiss }) => {
 
   // variables
   // const snapPoints = useMemo(() => ["75%", "85%"], []);
-  const snapPoints = useMemo(() => ["100%", "75%"], []);
+  const snapPoints = useMemo(() => ["75%", "100%"], []);
 
   // callbacks
   const handleSheetChanges = useCallback(
@@ -57,7 +57,7 @@ const BookingBottomSheet = ({ visible, onDismiss }) => {
   return (
     <BottomSheetModal
       ref={bottomSheetModalRef}
-      index={1}
+      index={0}
       snapPoints={snapPoints}
       onChange={handleSheetChanges}
       enablePanDownToClose={true}

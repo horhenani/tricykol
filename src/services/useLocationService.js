@@ -157,7 +157,7 @@ const useLocationService = () => {
   // Get current location with high accuracy
   const getCurrentLocation = useCallback(async () => {
     try {
-      const enabled = await checkLocationEnabled();
+      const enabled = await Location.hasServicesEnabledAsync();
       if (!enabled) {
         setShowDisabledAlert(true);
         return null;
@@ -168,9 +168,11 @@ const useLocationService = () => {
         return null;
       }
 
+      // Use low accuracy for faster initial response
       const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-        maximumAge: 10000,
+        accuracy: Location.Accuracy.Balanced, // Changed from High to Balanced
+        maximumAge: 5000, // Reduced from 10000 to 5000
+        timeout: 5000, // Add timeout
       });
 
       setLocation(currentLocation);
