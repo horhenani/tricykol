@@ -7,8 +7,6 @@ import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 import { AuthProvider, useAuth } from "@context/AuthContext";
 import { customTheme } from "@constants/globalStyles";
-import { KeyboardAvoidingView } from "react-native";
-import { Platform } from "react-native";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
@@ -82,22 +80,15 @@ function Navigation() {
 
 export default function App() {
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={{ flex: 1 }}
-      // If you have a bottom tab navigator or fixed bottom elements, add their height
-      // keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-    >
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <BottomSheetModalProvider>
-          <AuthProvider>
-            <PaperProvider theme={customTheme}>
-              <Navigation />
-            </PaperProvider>
-          </AuthProvider>
-        </BottomSheetModalProvider>
-      </GestureHandlerRootView>
-    </KeyboardAvoidingView>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <BottomSheetModalProvider>
+        <AuthProvider>
+          <PaperProvider theme={customTheme}>
+            <Navigation />
+          </PaperProvider>
+        </AuthProvider>
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   Keyboard,
   Alert,
   KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { TextInput } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -67,7 +68,12 @@ const RegisterScreen = ({ navigation, route }) => {
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <SafeAreaView style={styles.container}>
         <AppHeader />
-        <KeyboardAvoidingView style={styles.mainContent}>
+        <KeyboardAvoidingView
+          style={styles.mainContent}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
+          // If you have a bottom tab navigator or fixed bottom elements, add their height
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+        >
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Enter your mobile number:</Text>
             <Text style={styles.description}>

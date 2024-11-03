@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, StyleSheet, StatusBar } from "react-native";
+import {
+  View,
+  StyleSheet,
+  StatusBar,
+  KeyboardAvoidingView,
+  Platform,
+  BackHandler,
+} from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Portal } from "react-native-paper";
 import useLocationService from "@services/useLocationService";
@@ -23,10 +30,13 @@ const Dashboard = () => {
   const {
     location,
     isLocationEnabled,
+    hasLocationPermission,
     showDisabledAlert,
     setShowDisabledAlert,
     getCurrentLocation,
     requestLocationPermission,
+    checkLocationPermission,
+    checkLocationEnabled,
     openLocationSettings,
     isFirstTimeUser,
     setIsFirstTimeUser,
@@ -35,34 +45,39 @@ const Dashboard = () => {
 
   // Handle initial map setup and location
   useEffect(() => {
-    const initializeMap = async () => {
-      const currentLocation = await getCurrentLocation();
-      if (currentLocation && mapRef.current) {
-        mapRef.current.animateToLocation(currentLocation);
-      }
-    };
-
-    initializeMap();
-  }, []);
-
-  useEffect(() => {
     const initializeUser = async () => {
       if (user?.uid) {
+        // Always check first-time user status first
         await checkFirstTimeUser();
+
+        // Always check location status, regardless of first-time user
+        const isEnabled = await checkLocationEnabled();
+        const hasPermission = await checkLocationPermission();
+
+        // Only animate to location if we have permission and it's enabled
+        // AND we're not showing the welcome modal
+        if (isEnabled && hasPermission && !isFirstTimeUser) {
+          const currentLocation = await getCurrentLocation();
+          if (currentLocation && mapRef.current) {
+            mapRef.current.animateToLocation(currentLocation);
+          }
+        }
       } else {
         setIsFirstTimeUser(false);
       }
     };
 
     initializeUser();
-  }, [user, checkFirstTimeUser]);
+  }, [user]);
 
   const handleWelcomeDismiss = async () => {
     try {
-      setIsFirstTimeUser(false);
-      const permissionGranted = await requestLocationPermission();
-      if (!permissionGranted) {
-        setShowDisabledAlert(true);
+      if (hasLocationPermission && isLocationEnabled) {
+        setIsFirstTimeUser(false);
+        const currentLocation = await getCurrentLocation();
+        if (currentLocation && mapRef.current) {
+          mapRef.current.animateToLocation(currentLocation);
+        }
       }
     } catch (error) {
       console.error("Error handling welcome dismiss:", error);
@@ -95,6 +110,20 @@ const Dashboard = () => {
     setRegion(newRegion);
   };
 
+  // Location permission request handler
+  const handleLocationPermissionRequest = async () => {
+    try {
+      const granted = await requestLocationPermission();
+      if (granted) {
+        await checkLocationPermission();
+      }
+      return granted;
+    } catch (error) {
+      console.error("Error requesting location permission:", error);
+      return false;
+    }
+  };
+
   const handleBookPress = () => {
     // Check if location is enabled before showing booking modal
     if (!isLocationEnabled) {
@@ -103,6 +132,44 @@ const Dashboard = () => {
     }
     setIsBookingModalVisible(true);
   };
+
+  useEffect(() => {
+    const handleLocationEnabled = async () => {
+      if (isLocationEnabled && hasLocationPermission && !isFirstTimeUser) {
+        const currentLocation = await getCurrentLocation();
+        if (currentLocation && mapRef.current) {
+          mapRef.current.animateToLocation(currentLocation);
+        }
+      }
+    };
+
+    handleLocationEnabled();
+  }, [isLocationEnabled, hasLocationPermission, isFirstTimeUser]);
+
+  // Location settings handler
+  const handleOpenLocationSettings = async () => {
+    try {
+      await openLocationSettings();
+      // Note: We don't need to check immediately as the useEffect interval will handle it
+    } catch (error) {
+      console.error("Error opening location settings:", error);
+    }
+  };
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        if (isBookingModalVisible) {
+          setIsBookingModalVisible(false);
+          return true;
+        }
+        return false;
+      },
+    );
+
+    return () => backHandler.remove();
+  }, [isBookingModalVisible]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -119,16 +186,25 @@ const Dashboard = () => {
                 visible={isFirstTimeUser}
                 onDismiss={handleWelcomeDismiss}
                 userName={user?.firstName}
+                onRequestPermission={handleLocationPermissionRequest}
+                onOpenSettings={handleOpenLocationSettings}
+                isLocationEnabled={isLocationEnabled}
+                hasLocationPermission={hasLocationPermission}
               />
-
-              <BookingBottomSheet
-                visible={isBookingModalVisible}
-                onDismiss={() => setIsBookingModalVisible(false)}
-                currentLocation={location}
-              />
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "padding"}
+                // style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+              >
+                <BookingBottomSheet
+                  visible={isBookingModalVisible}
+                  onDismiss={() => setIsBookingModalVisible(false)}
+                  currentLocation={location}
+                />
+              </KeyboardAvoidingView>
 
               <LocationDisabledAlert
-                visible={showDisabledAlert}
+                visible={showDisabledAlert && !isFirstTimeUser}
                 onDismiss={() => setShowDisabledAlert(false)}
               />
             </Portal>

@@ -57,7 +57,7 @@ const BookingBottomSheet = ({ visible, onDismiss }) => {
   return (
     <BottomSheetModal
       ref={bottomSheetModalRef}
-      index={0}
+      index={1}
       snapPoints={snapPoints}
       onChange={handleSheetChanges}
       enablePanDownToClose={true}
@@ -103,6 +103,7 @@ const BookingBottomSheet = ({ visible, onDismiss }) => {
         <TextInput
           mode="outlined"
           placeholder="Enter Destination"
+          autoFocus={true}
           left={
             <TextInput.Icon
               icon={() => (
@@ -170,7 +171,7 @@ const BookingBottomSheet = ({ visible, onDismiss }) => {
 const styles = StyleSheet.create({
   handleIndicator: {
     // backgroundColor: colors.gray,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
     width: 40,
     // height: 4,
     borderRadius: 2,

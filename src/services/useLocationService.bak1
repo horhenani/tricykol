@@ -13,7 +13,6 @@ const useLocationService = () => {
   const [showDisabledAlert, setShowDisabledAlert] = useState(false);
   const { user } = useAuth();
   const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
-  const [hasLocationPermission, setHasLocationPermission] = useState(false);
 
   // In useLocationService.js
   const checkFirstTimeUser = useCallback(async () => {
@@ -28,14 +27,15 @@ const useLocationService = () => {
       }
 
       const userData = userDoc.data();
+
+      // Check if this is their first visit to dashboard
       if (!userData?.hasSeenWelcome) {
+        // Update the flag in Firestore
         await firestore().collection("users").doc(user.uid).update({
           hasSeenWelcome: true,
           lastLogin: firestore.FieldValue.serverTimestamp(),
         });
         setIsFirstTimeUser(true);
-        // Don't show location disabled alert for first time users
-        setShowDisabledAlert(false);
       } else {
         setIsFirstTimeUser(false);
       }
@@ -50,24 +50,13 @@ const useLocationService = () => {
     const enabled = await Location.hasServicesEnabledAsync();
     setIsLocationEnabled(enabled);
 
-    // Only show disabled alert if:
-    // 1. User is logged in
-    // 2. Location is disabled
-    // 3. Not showing first-time user welcome modal
-    if (user && !enabled && !isFirstTimeUser) {
+    // Show disabled alert if user is logged in and location is disabled
+    if (user && !enabled) {
       setShowDisabledAlert(true);
     }
 
     return enabled;
-  }, [user, isFirstTimeUser]);
-
-  // Check location permission status
-  const checkLocationPermission = useCallback(async () => {
-    const { status } = await Location.getForegroundPermissionsAsync();
-    const hasPermission = status === "granted";
-    setHasLocationPermission(hasPermission);
-    return hasPermission;
-  }, []);
+  }, [user]);
 
   // Watch for location service changes
   useEffect(() => {
@@ -123,12 +112,17 @@ const useLocationService = () => {
   }, []);
 
   // Request location permission
+  // Modify requestLocationPermission
   const requestLocationPermission = useCallback(async () => {
     try {
+      // First check if permission is already granted
+      const { status: existingStatus } =
+        await Location.getForegroundPermissionsAsync();
+      if (existingStatus === "granted") return true;
+
+      // If not granted, request it
       const { status } = await Location.requestForegroundPermissionsAsync();
-      const granted = status === "granted";
-      setHasLocationPermission(granted);
-      return granted;
+      return status === "granted";
     } catch (error) {
       console.error("Error requesting location permission:", error);
       return false;
@@ -175,9 +169,9 @@ const useLocationService = () => {
 
       // Use low accuracy for faster initial response
       const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-        maximumAge: 5000,
-        timeout: 5000,
+        accuracy: Location.Accuracy.Balanced, 
+        maximumAge: 5000, 
+        timeout: 5000, 
       });
 
       setLocation(currentLocation);
@@ -203,8 +197,8 @@ const useLocationService = () => {
       return await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Balanced,
-          timeInterval: 5000,
-          distanceInterval: 5,
+          timeInterval: 5000, 
+          distanceInterval: 5, 
         },
         (newLocation) => {
           setLocation(newLocation);
@@ -260,17 +254,15 @@ const useLocationService = () => {
     showDisabledAlert,
     getCurrentLocation,
     checkLocationEnabled,
-    checkLocationPermission,
     handlePostRegistrationLocation,
     handlePostRegModalDismiss,
     setShowPostRegAlert,
     setShowDisabledAlert,
-    openLocationSettings,
+    openLocationSettings, 
     requestLocationPermission,
     checkFirstTimeUser,
     isFirstTimeUser,
     setIsFirstTimeUser,
-    hasLocationPermission,
   };
 };
 

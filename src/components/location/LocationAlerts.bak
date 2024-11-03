@@ -1,64 +1,20 @@
 import React from "react";
 import { StyleSheet, View, TouchableOpacity } from "react-native";
-import { Modal, Portal, Text, Checkbox } from "react-native-paper";
+import { Modal, Portal, Text } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors, fonts } from "@constants/globalStyles";
 import CustomButton from "@components/CustomButton";
 import useLocationService from "@services/useLocationService";
-import { useState, useEffect } from "react";
+
 
 // Welcome modal for new users in Dashboard
-export const WelcomeLocationModal = ({
-  visible,
-  onDismiss,
-  userName,
-  onRequestPermission,
-  onOpenSettings,
-  isLocationEnabled,
-  hasLocationPermission,
-}) => {
+export const WelcomeLocationModal = ({ visible, onDismiss, userName }) => {
   const insets = useSafeAreaInsets();
-  const [permissionChecked, setPermissionChecked] = useState(false);
-  const [locationChecked, setLocationChecked] = useState(false);
-  const [setupComplete, setSetupComplete] = useState(false);
 
-  // Reset states when modal becomes visible
-  useEffect(() => {
-    if (visible) {
-      // Start fresh each time modal shows
-      setPermissionChecked(false);
-      setLocationChecked(false);
-      setSetupComplete(false);
-    }
-  }, [visible]);
-
-  // Watch for changes in location permission and service status
-  useEffect(() => {
-    if (visible) {
-      setPermissionChecked(hasLocationPermission);
-      setLocationChecked(isLocationEnabled);
-
-      // If both conditions are met, mark setup as complete
-      if (hasLocationPermission && isLocationEnabled) {
-        setSetupComplete(true);
-      }
-    }
-  }, [hasLocationPermission, isLocationEnabled, visible]);
-
-  const handleRequestPermission = async () => {
-    const granted = await onRequestPermission();
-    if (granted) {
-      setPermissionChecked(true);
-    }
-  };
-
-  const handleOpenSettings = () => {
-    onOpenSettings();
-  };
 
   const handleGetStarted = async () => {
-    if (setupComplete && onDismiss) {
+    if (onDismiss) {
       await onDismiss();
     }
   };
@@ -67,7 +23,7 @@ export const WelcomeLocationModal = ({
     <Portal>
       <Modal
         visible={visible}
-        onDismiss={null} // Prevent dismissing by tapping outside
+        onDismiss={onDismiss}
         contentContainerStyle={[
           styles.modalContainer,
           { paddingTop: insets.top },
@@ -86,59 +42,37 @@ export const WelcomeLocationModal = ({
           </Text>
 
           <Text style={styles.welcomeMessage}>
-            To start using Tricykol, we need location access to find nearby
-            riders. Please complete these steps:
+            We're excited to help you find the best rides in your area. To get
+            started and connect you with nearby riders, we'll need access to
+            your location.
           </Text>
 
-          {!setupComplete ? (
-            <View style={styles.setupSteps}>
-              <View style={styles.stepContainer}>
-                <Checkbox.Android
-                  status={permissionChecked ? "checked" : "unchecked"}
-                  disabled={true}
-                  color={colors.success}
-                />
-                <View style={styles.stepContent}>
-                  <Text style={styles.stepText}>Allow Location Access</Text>
-                  <CustomButton
-                    title="Allow Tricykol to use Location"
-                    onPress={handleRequestPermission}
-                    style={[
-                      styles.stepButton,
-                      permissionChecked && styles.completedButton,
-                    ]}
-                    disabled={permissionChecked}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.stepContainer}>
-                <Checkbox.Android
-                  status={locationChecked ? "checked" : "unchecked"}
-                  disabled={true}
-                  color={colors.success}
-                />
-                <View style={styles.stepContent}>
-                  <Text style={styles.stepText}>Enable Location Services</Text>
-                  <CustomButton
-                    title="Enable Location"
-                    onPress={handleOpenSettings}
-                    style={[
-                      styles.stepButton,
-                      locationChecked && styles.completedButton,
-                    ]}
-                    disabled={locationChecked}
-                  />
-                </View>
-              </View>
+          <View style={styles.featuresList}>
+            <View style={styles.featureItem}>
+              <MaterialCommunityIcons
+                name="map-marker-check"
+                size={24}
+                color={colors.secondary}
+              />
+              <Text style={styles.featureText}>
+                Find nearby riders instantly
+              </Text>
             </View>
-          ) : (
-            <CustomButton
-              title="Start Booking"
-              onPress={handleGetStarted}
-              style={styles.getStartedButton}
-            />
-          )}
+            <View style={styles.featureItem}>
+              <MaterialCommunityIcons
+                name="shield-check"
+                size={24}
+                color={colors.secondary}
+              />
+              <Text style={styles.featureText}>Safe and reliable journeys</Text>
+            </View>
+          </View>
+
+          <CustomButton
+            title="Get Started"
+            onPress={handleGetStarted}
+            style={styles.welcomeButton}
+          />
         </View>
       </Modal>
     </Portal>
@@ -146,10 +80,16 @@ export const WelcomeLocationModal = ({
 };
 
 // Bottom sheet alert for when location is disabled
-export const LocationDisabledAlert = ({ visible, onDismiss }) => {
+export const LocationDisabledAlert = ({
+  visible,
+  onDismiss,
+}) => {
   const insets = useSafeAreaInsets();
 
-  const { openLocationSettings } = useLocationService();
+  const {
+    openLocationSettings,
+  } = useLocationService();
+
 
   return (
     <Portal>
@@ -198,13 +138,6 @@ export const LocationDisabledAlert = ({ visible, onDismiss }) => {
 };
 
 const styles = StyleSheet.create({
-  modalContainer: {
-    margin: 20,
-    backgroundColor: colors.background,
-    borderRadius: 15,
-    padding: 20,
-    elevation: 6,
-  },
   welcomeContent: {
     alignItems: "center",
     paddingVertical: 20,
@@ -228,43 +161,28 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 24,
   },
-  setupSteps: {
+  featuresList: {
     width: "100%",
-    gap: 20,
-    marginTop: 10,
+    marginBottom: 24,
+    gap: 12,
   },
-  stepContainer: {
+  featureItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.background,
-    borderRadius: 10,
-    padding: 10,
-    elevation: 2,
+    gap: 12,
+    paddingVertical: 4,
   },
-  stepContent: {
-    flex: 1,
-    marginLeft: 10,
-  },
-  stepText: {
+  featureText: {
     fontSize: 16,
-    fontFamily: fonts.medium,
+    fontFamily: fonts.regular,
     color: colors.text,
-    marginBottom: 8,
+    flex: 1,
   },
-  stepButton: {
+  welcomeButton: {
     width: "100%",
-    height: 40,
-  },
-  completedButton: {
-    backgroundColor: colors.success,
-    opacity: 0.7,
-  },
-  getStartedButton: {
-    width: "100%",
-    marginTop: 20,
+    marginTop: 10,
     backgroundColor: colors.primary,
   },
-
   enableLocationButton: {
     width: "100%",
     marginTop: 20,
@@ -306,7 +224,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    backgroundColor: "transparent",
+    backgroundColor: 'transparent',
     borderRadius: 2,
   },
   closeButton: {

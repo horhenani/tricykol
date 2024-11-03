@@ -79,7 +79,11 @@ const styles = StyleSheet.create({
   menuButton: {
     backgroundColor: colors.background,
     padding: 10,
+    paddingBottom: 13,
     borderRadius: 100,
+    elevation: 99,
+    borderColor: colors.gray,
+    borderWidth: 1,
   },
   header: {
     position: "absolute",

@@ -4,6 +4,7 @@ import {
   StyleSheet,
   Text,
   Keyboard,
+  Platform,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
 } from "react-native";
@@ -63,7 +64,12 @@ const NameStep = () => {
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <SafeAreaView style={styles.container}>
         <AppHeaderWithoutBack />
-        <KeyboardAvoidingView style={styles.content}>
+        <KeyboardAvoidingView
+          style={styles.content}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
+          // If you have a bottom tab navigator or fixed bottom elements, add their height
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+        >
           <View style={styles.inputContainer}>
             <Text style={styles.title}>Enter your name</Text>
             <TextInput
