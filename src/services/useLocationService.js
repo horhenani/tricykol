@@ -1,115 +1,251 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import * as Location from "expo-location";
 import { Platform } from "react-native";
 import * as IntentLauncher from "expo-intent-launcher";
-import { useAuth } from "@context/AuthContext";
+import { GOOGLE_MAPS_API_KEY } from "@config/keys";
 import firestore from "@react-native-firebase/firestore";
+import { LocationCacheService } from "./locationCacheService";
 
 const useLocationService = () => {
   const [location, setLocation] = useState(null);
-  const [errorMsg, setErrorMsg] = useState(null);
   const [isLocationEnabled, setIsLocationEnabled] = useState(false);
-  const [showPostRegAlert, setShowPostRegAlert] = useState(false);
-  const [showDisabledAlert, setShowDisabledAlert] = useState(false);
-  const { user } = useAuth();
-  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
   const [hasLocationPermission, setHasLocationPermission] = useState(false);
+  const [showLocationAlert, setShowLocationAlert] = useState(false);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
+  const [locationWatcher, setLocationWatcher] = useState(null);
 
-  // In useLocationService.js
-  const checkFirstTimeUser = useCallback(async () => {
-    if (!user?.uid) return;
+  // Use refs to track alert state between renders
+  const hasShownInitialAlert = useRef(false);
+  const previousLocationState = useRef(null);
 
+  const getCurrentLocationWithAddress = async () => {
     try {
-      const userDoc = await firestore().collection("users").doc(user.uid).get();
+      // Use existing getCurrentLocation function
+      const location = await getCurrentLocation();
 
-      if (!userDoc.exists) {
-        setIsFirstTimeUser(false);
-        return;
+      if (!location?.coords) {
+        throw new Error("Could not get location coordinates");
       }
 
-      const userData = userDoc.data();
-      if (!userData?.hasSeenWelcome) {
-        await firestore().collection("users").doc(user.uid).update({
-          hasSeenWelcome: true,
-          lastLogin: firestore.FieldValue.serverTimestamp(),
-        });
-        setIsFirstTimeUser(true);
-        // Don't show location disabled alert for first time users
-        setShowDisabledAlert(false);
-      } else {
-        setIsFirstTimeUser(false);
+      // Get administrative areas for quick response
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.coords.latitude},${location.coords.longitude}&key=${GOOGLE_MAPS_API_KEY}&language=en&region=PH&result_type=administrative_area_level_3|administrative_area_level_2`,
+        {
+          method: "GET",
+          timeout: 2000,
+        },
+      );
+
+      const data = await response.json();
+      const results = data.results;
+
+      if (results?.length > 0) {
+        const components = results[0].address_components;
+
+        const barangay = components.find((c) =>
+          c.types.includes("administrative_area_level_3"),
+        )?.long_name;
+        const municipality = components.find((c) =>
+          c.types.includes("administrative_area_level_2"),
+        )?.long_name;
+
+        return {
+          coordinates: {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          },
+          name: barangay || municipality || "Current Location",
+          address: [barangay, municipality, "Tarlac"]
+            .filter(Boolean)
+            .join(", "),
+          components: {
+            barangay,
+            municipality,
+          },
+        };
       }
+
+      // Fallback with coordinates
+      return {
+        coordinates: {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
+        name: "Current Location",
+        address: "Tarlac Province",
+        components: null,
+      };
     } catch (error) {
-      console.error("Error checking first time user:", error);
-      setIsFirstTimeUser(false);
+      console.error("Error getting location with address:", error);
+      return null;
     }
-  }, [user]);
+  };
+
+  const reverseGeocode = async (latitude, longitude) => {
+    try {
+      const result = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude,
+      });
+
+      if (result && result[0]) {
+        // Format the address
+        const location = result[0];
+        const addressComponents = [];
+
+        if (location.street) addressComponents.push(location.street);
+        if (location.subregion) addressComponents.push(location.subregion);
+        if (location.city) addressComponents.push(location.city);
+
+        return {
+          name: addressComponents[0] || "Current Location", // Use first component as name
+          address: addressComponents.join(", "),
+          fullLocation: location,
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error("Error reverse geocoding:", error);
+      return null;
+    }
+  };
 
   // Check if location services are enabled
   const checkLocationEnabled = useCallback(async () => {
-    const enabled = await Location.hasServicesEnabledAsync();
-    setIsLocationEnabled(enabled);
-
-    // Only show disabled alert if:
-    // 1. User is logged in
-    // 2. Location is disabled
-    // 3. Not showing first-time user welcome modal
-    if (user && !enabled && !isFirstTimeUser) {
-      setShowDisabledAlert(true);
+    try {
+      const enabled = await Location.hasServicesEnabledAsync();
+      return enabled;
+    } catch (error) {
+      console.error("Error checking location status:", error);
+      return false;
     }
-
-    return enabled;
-  }, [user, isFirstTimeUser]);
-
-  // Check location permission status
-  const checkLocationPermission = useCallback(async () => {
-    const { status } = await Location.getForegroundPermissionsAsync();
-    const hasPermission = status === "granted";
-    setHasLocationPermission(hasPermission);
-    return hasPermission;
   }, []);
 
-  // Watch for location service changes
+  // Check location permission
+  const checkLocationPermission = useCallback(async () => {
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      const hasPermission = status === "granted";
+      setHasLocationPermission(hasPermission);
+      return hasPermission;
+    } catch (error) {
+      console.error("Error checking location permission:", error);
+      return false;
+    }
+  }, []);
+
+  // Initialize location monitoring
+  const startLocationMonitoring = useCallback(async () => {
+    try {
+      if (locationWatcher) {
+        locationWatcher.remove();
+      }
+
+      const enabled = await checkLocationEnabled();
+      const hasPermission = await checkLocationPermission();
+
+      if (!enabled || !hasPermission) {
+        setLocation(null);
+        return;
+      }
+
+      const subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 3000,
+          distanceInterval: 5,
+        },
+        (newLocation) => {
+          setLocation(newLocation);
+        },
+      );
+
+      setLocationWatcher(subscription);
+    } catch (error) {
+      console.error("Error starting location monitoring:", error);
+    }
+  }, [checkLocationEnabled, checkLocationPermission]);
+
+  // Monitor location services status
   useEffect(() => {
+    let statusCheck;
     let isMounted = true;
-    let checkInterval;
 
-    const watchLocationService = async () => {
-      if (!isMounted) return;
-
-      const enabled = await Location.hasServicesEnabledAsync();
-
-      // Only update state if enabled status has changed
-      if (enabled !== isLocationEnabled) {
+    const monitorLocationServices = async () => {
+      try {
+        // Initial check
+        const enabled = await checkLocationEnabled();
         setIsLocationEnabled(enabled);
+        previousLocationState.current = enabled;
 
-        // If location was just enabled
-        if (enabled) {
-          const permissionStatus =
-            await Location.getForegroundPermissionsAsync();
-          if (permissionStatus.status === "granted") {
-            const currentLocation = await getCurrentLocation();
-            if (currentLocation) {
-              await watchLocation();
-            }
-          }
+        // Show initial alert if needed
+        if (!enabled && !isFirstTimeUser && !hasShownInitialAlert.current) {
+          setShowLocationAlert(true);
+          hasShownInitialAlert.current = true;
         }
+
+        if (enabled) {
+          startLocationMonitoring();
+        }
+
+        // Set up monitoring interval
+        statusCheck = setInterval(async () => {
+          if (!isMounted) return;
+
+          const currentEnabled = await checkLocationEnabled();
+
+          // Only update state and show alert if there's an actual change
+          if (currentEnabled !== previousLocationState.current) {
+            setIsLocationEnabled(currentEnabled);
+
+            // Show alert only when location is newly disabled
+            if (!currentEnabled && !isFirstTimeUser) {
+              setShowLocationAlert(true);
+            }
+
+            // Handle location state change
+            if (!currentEnabled) {
+              setLocation(null);
+              if (locationWatcher) {
+                locationWatcher.remove();
+              }
+            } else {
+              startLocationMonitoring();
+            }
+
+            // Update previous state
+            previousLocationState.current = currentEnabled;
+          }
+        }, 3000);
+      } catch (error) {
+        console.error("Error in location services monitor:", error);
       }
     };
 
-    // Start watching location service status
-    checkInterval = setInterval(watchLocationService, 1000);
-
-    // Initial check
-    watchLocationService();
+    monitorLocationServices();
 
     return () => {
       isMounted = false;
-      if (checkInterval) {
-        clearInterval(checkInterval);
-      }
+      if (statusCheck) clearInterval(statusCheck);
+      if (locationWatcher) locationWatcher.remove();
     };
-  }, [isLocationEnabled]);
+  }, [isFirstTimeUser, startLocationMonitoring]);
+
+  // Request location permission
+  const requestLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      const granted = status === "granted";
+      setHasLocationPermission(granted);
+      if (granted) {
+        startLocationMonitoring();
+      }
+      return granted;
+    } catch (error) {
+      console.error("Error requesting location permission:", error);
+      return false;
+    }
+  };
 
   // Open location settings
   const openLocationSettings = useCallback(async () => {
@@ -122,155 +258,49 @@ const useLocationService = () => {
     }
   }, []);
 
-  // Request location permission
-  const requestLocationPermission = useCallback(async () => {
+  // Get current location
+  const getCurrentLocation = async () => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      const granted = status === "granted";
-      setHasLocationPermission(granted);
-      return granted;
-    } catch (error) {
-      console.error("Error requesting location permission:", error);
-      return false;
-    }
-  }, []);
-
-  // Should check permissions first and ensure modal shows:
-  const handlePostRegistrationLocation = useCallback(async () => {
-    setShowPostRegAlert(true);
-  }, []);
-
-  // Handle the okay button press from post-registration modal
-  // Update handlePostRegModalDismiss
-  const handlePostRegModalDismiss = useCallback(async () => {
-    try {
-      setShowPostRegAlert(false); // Hide modal
-      // Immediately request permission after modal is dismissed
-      const result = await requestLocationPermission();
-
-      if (result) {
-        // If permission granted, try to get current location
-        await getCurrentLocation();
-      }
-      return result;
-    } catch (error) {
-      console.error("Error in modal dismiss handler:", error);
-      return false;
-    }
-  }, [requestLocationPermission, getCurrentLocation]);
-
-  // Get current location with high accuracy
-  const getCurrentLocation = useCallback(async () => {
-    try {
-      const enabled = await Location.hasServicesEnabledAsync();
+      const enabled = await checkLocationEnabled();
       if (!enabled) {
-        setShowDisabledAlert(true);
         return null;
       }
 
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== "granted") {
+      const hasPermission = await checkLocationPermission();
+      if (!hasPermission) {
         return null;
       }
 
-      // Use low accuracy for faster initial response
       const currentLocation = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
-        maximumAge: 5000,
-        timeout: 5000,
       });
 
       setLocation(currentLocation);
       return currentLocation;
     } catch (error) {
-      console.error("Error getting location:", error);
-      setErrorMsg("Could not get current location");
+      if (error?.code !== "E_LOCATION_SERVICES_DISABLED") {
+        console.error("Error getting current location:", error);
+      }
       return null;
     }
-  }, [checkLocationEnabled]);
-
-  // Modify watchLocation to handle reconnection
-  const watchLocation = useCallback(async () => {
-    try {
-      const enabled = await checkLocationEnabled();
-      const { status } = await Location.getForegroundPermissionsAsync();
-
-      if (!enabled || status !== "granted") {
-        return null;
-      }
-
-      // Start watching location with more frequent updates
-      return await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 5000,
-          distanceInterval: 5,
-        },
-        (newLocation) => {
-          setLocation(newLocation);
-        },
-      );
-    } catch (error) {
-      console.error("Error watching location:", error);
-      return null;
-    }
-  }, [checkLocationEnabled]);
-
-  // Check location status when user changes
-  useEffect(() => {
-    if (user) {
-      checkLocationEnabled();
-    }
-  }, [user, checkLocationEnabled]);
-
-  // Initialize location services on mount
-  useEffect(() => {
-    let locationSubscription = null;
-
-    const initLocation = async () => {
-      if (user) {
-        const enabled = await checkLocationEnabled();
-        if (enabled) {
-          const permissionStatus =
-            await Location.getForegroundPermissionsAsync();
-          if (permissionStatus.status === "granted") {
-            const currentLocation = await getCurrentLocation();
-            if (currentLocation) {
-              locationSubscription = await watchLocation();
-            }
-          }
-        }
-      }
-    };
-
-    initLocation();
-
-    return () => {
-      if (locationSubscription) {
-        locationSubscription.remove();
-      }
-    };
-  }, [user]);
+  };
 
   return {
     location,
-    errorMsg,
     isLocationEnabled,
-    showPostRegAlert,
-    showDisabledAlert,
+    hasLocationPermission,
+    showLocationAlert,
+    setShowLocationAlert,
+    isFirstTimeUser,
+    setIsFirstTimeUser,
     getCurrentLocation,
     checkLocationEnabled,
     checkLocationPermission,
-    handlePostRegistrationLocation,
-    handlePostRegModalDismiss,
-    setShowPostRegAlert,
-    setShowDisabledAlert,
-    openLocationSettings,
     requestLocationPermission,
-    checkFirstTimeUser,
-    isFirstTimeUser,
-    setIsFirstTimeUser,
-    hasLocationPermission,
+    openLocationSettings,
+    startLocationMonitoring,
+    reverseGeocode,
+    getCurrentLocationWithAddress,
   };
 };
 

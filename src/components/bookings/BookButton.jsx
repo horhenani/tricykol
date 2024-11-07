@@ -1,8 +1,9 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, TouchableOpacity, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import CustomButton from "@components/CustomButton";
-import { colors } from "@constants/globalStyles";
+import { colors, fonts } from "@constants/globalStyles";
+import Entypo from "@expo/vector-icons/Entypo";
 
 const BookButton = ({ onPress, disabled }) => {
   const insets = useSafeAreaInsets();
@@ -10,18 +11,39 @@ const BookButton = ({ onPress, disabled }) => {
   return (
     <View style={styles.mainContainer}>
       <View style={[styles.container, { paddingBottom: insets.bottom + 20 }]}>
-        <CustomButton
-          title="Book Now"
-          onPress={onPress}
-          disabled={disabled}
-          style={styles.button}
-        />
+        <TouchableOpacity>
+          <View style={styles.scheduleBookContainer}>
+            <Text style={styles.scheduleBookText}>Advance Booking</Text>
+            <Entypo name="chevron-small-right" size={24} color={colors.textMid} />
+          </View>
+        </TouchableOpacity>
+        <View style={styles.bookButton}>
+          <CustomButton
+            title="Book"
+            onPress={onPress}
+            disabled={disabled}
+            style={styles.button}
+          />
+        </View>
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  scheduleBookContainer: {
+    alignItems: "center",
+    paddingLeft: 10,
+    flexDirection: "row",
+  },
+  bookButton: {
+    alignItems: "center",
+  },
+  scheduleBookText: {
+    fontFamily: fonts.regular,
+    color: colors.textMid,
+    fontSize: 14,
+  },
   mainContainer: {
     position: "absolute",
     bottom: 0,
@@ -31,9 +53,10 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   container: {
-    alignItems: "center",
+    // alignItems: "flex-start",
+    textAlign: "left",
     paddingHorizontal: 20,
-    paddingTop: 40,
+    paddingTop: 20,
     backgroundColor: colors.background,
     borderTopRightRadius: 20,
     borderTopLeftRadius: 20,
@@ -46,7 +69,7 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 1,
     shadowRadius: 0,
-
+    gap: 15,
   },
   button: {
     elevation: 4,

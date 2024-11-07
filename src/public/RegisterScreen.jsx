@@ -65,68 +65,70 @@ const RegisterScreen = ({ navigation, route }) => {
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <SafeAreaView style={styles.container}>
-        <AppHeader />
-        <KeyboardAvoidingView
-          style={styles.mainContent}
-          behavior={Platform.OS === "ios" ? "padding" : "padding"}
-          // If you have a bottom tab navigator or fixed bottom elements, add their height
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-        >
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Enter your mobile number:</Text>
-            <Text style={styles.description}>
-              We'll send you a verification code to verify your number.
-            </Text>
-
-            <Text style={styles.phoneLabel}>
-              Phone number: <Text style={styles.required}>*</Text>
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              value={phoneNumber}
-              onChangeText={handlePhoneChange}
-              keyboardType="number-pad"
-              autoFocus={true}
-              maxLength={10}
-              placeholder="9213456789"
-              placeholderTextColor={colors.gray}
-              mode="outlined"
-              error={phoneNumber.length > 0 && !isValid}
-              disabled={loading}
-              activeOutlineColor={colors.secondary}
-              left={
-                <TextInput.Icon
-                  icon={() => (
-                    <View style={styles.affixContainer}>
-                      <Text style={styles.countryCode}>+63</Text>
-                      <Text style={styles.separator}> | </Text>
-                    </View>
-                  )}
-                  style={styles.textIcon}
-                />
-              }
-            />
-            {phoneNumber.length > 0 && !isValid && (
-              <Text style={styles.errorText}>
-                Please enter a valid 10-digit number starting with 9
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "padding"}
+      // If you have a bottom tab navigator or fixed bottom elements, add their height
+      // keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      style={{ flex: 1 }}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <SafeAreaView style={styles.container}>
+          <AppHeader />
+          <View style={styles.mainContent}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Enter your mobile number:</Text>
+              <Text style={styles.description}>
+                We'll send you a verification code to verify your number.
               </Text>
-            )}
-          </View>
 
-          <View style={styles.buttonContainer}>
-            <CustomButton
-              title="Verify"
-              onPress={handleSendOTP}
-              disabled={!isValid || loading}
-              loading={loading}
-            />
+              <Text style={styles.phoneLabel}>
+                Phone number: <Text style={styles.required}>*</Text>
+              </Text>
+
+              <TextInput
+                style={styles.input}
+                value={phoneNumber}
+                onChangeText={handlePhoneChange}
+                keyboardType="number-pad"
+                autoFocus={true}
+                maxLength={10}
+                placeholder="9213456789"
+                placeholderTextColor={colors.gray}
+                mode="outlined"
+                error={phoneNumber.length > 0 && !isValid}
+                disabled={loading}
+                activeOutlineColor={colors.secondary}
+                left={
+                  <TextInput.Icon
+                    icon={() => (
+                      <View style={styles.affixContainer}>
+                        <Text style={styles.countryCode}>+63</Text>
+                        <Text style={styles.separator}> | </Text>
+                      </View>
+                    )}
+                    style={styles.textIcon}
+                  />
+                }
+              />
+              {phoneNumber.length > 0 && !isValid && (
+                <Text style={styles.errorText}>
+                  Please enter a valid 10-digit number starting with 9
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.buttonContainer}>
+              <CustomButton
+                title="Verify"
+                onPress={handleSendOTP}
+                disabled={!isValid || loading}
+                loading={loading}
+              />
+            </View>
           </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </TouchableWithoutFeedback>
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 };
 

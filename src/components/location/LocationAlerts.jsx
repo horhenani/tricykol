@@ -23,15 +23,17 @@ export const WelcomeLocationModal = ({
   const [locationChecked, setLocationChecked] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
 
+  const { checkLocationPermission } = useLocationService();
+
   // Reset states when modal becomes visible
   useEffect(() => {
-    if (visible) {
-      // Start fresh each time modal shows
-      setPermissionChecked(false);
-      setLocationChecked(false);
+    // Reset steps if either condition becomes false
+    if (!isLocationEnabled || !hasLocationPermission) {
+      setPermissionChecked(hasLocationPermission);
+      setLocationChecked(isLocationEnabled);
       setSetupComplete(false);
     }
-  }, [visible]);
+  }, [isLocationEnabled, hasLocationPermission]);
 
   // Watch for changes in location permission and service status
   useEffect(() => {
@@ -47,9 +49,18 @@ export const WelcomeLocationModal = ({
   }, [hasLocationPermission, isLocationEnabled, visible]);
 
   const handleRequestPermission = async () => {
-    const granted = await onRequestPermission();
-    if (granted) {
-      setPermissionChecked(true);
+    try {
+      // Call the provided onRequestPermission callback and await its result
+      const granted = await onRequestPermission();
+
+      // Only update UI if permission was actually granted
+      if (granted) {
+        setPermissionChecked(true);
+        // Force a recheck of location permission state
+        await checkLocationPermission?.();
+      }
+    } catch (error) {
+      console.error("Error requesting location permission:", error);
     }
   };
 
@@ -63,11 +74,33 @@ export const WelcomeLocationModal = ({
     }
   };
 
+  const renderSetupButton = (title, onPress, isChecked) => (
+    <TouchableOpacity
+      style={[styles.setupButton, isChecked && styles.completedButton]}
+      onPress={onPress}
+      disabled={isChecked}
+      activeOpacity={0.7}
+    >
+      <Checkbox.Android
+        status={isChecked ? "checked" : "unchecked"}
+        color={colors.text}
+      />
+      <Text
+        style={[
+          styles.setupButtonText,
+          isChecked && styles.completedButtonText,
+        ]}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
+
   return (
     <Portal>
       <Modal
         visible={visible}
-        onDismiss={null} // Prevent dismissing by tapping outside
+        onDismiss={null}
         contentContainerStyle={[
           styles.modalContainer,
           { paddingTop: insets.top },
@@ -92,52 +125,25 @@ export const WelcomeLocationModal = ({
 
           {!setupComplete ? (
             <View style={styles.setupSteps}>
-              <View style={styles.stepContainer}>
-                <Checkbox.Android
-                  status={permissionChecked ? "checked" : "unchecked"}
-                  disabled={true}
-                  color={colors.success}
-                />
-                <View style={styles.stepContent}>
-                  <Text style={styles.stepText}>Allow Location Access</Text>
-                  <CustomButton
-                    title="Allow Tricykol to use Location"
-                    onPress={handleRequestPermission}
-                    style={[
-                      styles.stepButton,
-                      permissionChecked && styles.completedButton,
-                    ]}
-                    disabled={permissionChecked}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.stepContainer}>
-                <Checkbox.Android
-                  status={locationChecked ? "checked" : "unchecked"}
-                  disabled={true}
-                  color={colors.success}
-                />
-                <View style={styles.stepContent}>
-                  <Text style={styles.stepText}>Enable Location Services</Text>
-                  <CustomButton
-                    title="Enable Location"
-                    onPress={handleOpenSettings}
-                    style={[
-                      styles.stepButton,
-                      locationChecked && styles.completedButton,
-                    ]}
-                    disabled={locationChecked}
-                  />
-                </View>
-              </View>
+              {renderSetupButton(
+                "Allow Location access",
+                handleRequestPermission,
+                permissionChecked,
+              )}
+              {renderSetupButton(
+                "Enable Location",
+                handleOpenSettings,
+                locationChecked,
+              )}
             </View>
           ) : (
-            <CustomButton
-              title="Start Booking"
-              onPress={handleGetStarted}
+            <TouchableOpacity
               style={styles.getStartedButton}
-            />
+              onPress={handleGetStarted}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.getStartedButtonText}>Start Booking</Text>
+            </TouchableOpacity>
           )}
         </View>
       </Modal>
@@ -149,7 +155,13 @@ export const WelcomeLocationModal = ({
 export const LocationDisabledAlert = ({ visible, onDismiss }) => {
   const insets = useSafeAreaInsets();
 
-  const { openLocationSettings } = useLocationService();
+  const { openLocationSettings, isLocationEnabled } = useLocationService();
+
+  useEffect(() => {
+    if (isLocationEnabled && visible) {
+      onDismiss();
+    }
+  }, [isLocationEnabled, visible]);
 
   return (
     <Portal>
@@ -230,45 +242,43 @@ const styles = StyleSheet.create({
   },
   setupSteps: {
     width: "100%",
-    gap: 20,
-    marginTop: 10,
+    gap: 16,
   },
-  stepContainer: {
+  setupButton: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.background,
+    padding: 16,
     borderRadius: 10,
-    padding: 10,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.gray,
   },
-  stepContent: {
-    flex: 1,
-    marginLeft: 10,
-  },
-  stepText: {
+  setupButtonText: {
+    marginLeft: 8,
     fontSize: 16,
     fontFamily: fonts.medium,
     color: colors.text,
-    marginBottom: 8,
+    flex: 1,
   },
-  stepButton: {
-    width: "100%",
-    height: 40,
-  },
-  completedButton: {
-    backgroundColor: colors.success,
-    opacity: 0.7,
+  completedButton: {},
+  completedButtonText: {
+    color: colors.text,
   },
   getStartedButton: {
     width: "100%",
-    marginTop: 20,
+    height: 50,
     backgroundColor: colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 10,
+    marginTop: 20,
+    elevation: 2,
   },
-
-  enableLocationButton: {
-    width: "100%",
-    marginTop: 20,
-    backgroundColor: colors.primary,
+  getStartedButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontFamily: fonts.medium,
   },
   modalContainer: {
     margin: 20,

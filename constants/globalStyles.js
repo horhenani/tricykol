@@ -1,32 +1,33 @@
 // src/styles/globalStyles.js
-import { StyleSheet } from 'react-native';
-import { DefaultTheme } from 'react-native-paper';
-
+import { StyleSheet } from "react-native";
+import { DefaultTheme } from "react-native-paper";
 
 export const colors = {
-  primary: '#F6C745',    
-  secondary: '#0c1d3b',  
-  background: '#FFFFFF', 
-  text: '#0c1d3b',       
-  textLight: '#FFFFFF',  
-  error: '#fc967e',      
-  success: '#34C759',    
-  warning: '#FFCC00',    
-  gray: '#8E8E93',       
-  disabled: 'rgb(211, 211, 211)',
+  primary: "#F6C745",
+  secondary: "#0c1d3b",
+  background: "#FFFFFF",
+  text: "#0c1d3b",
+  textLight: "#FFFFFF",
+  error: "#fc967e",
+  success: "#34C759",
+  warning: "#FFCC00",
+  gray: "#8E8E93",
+  disabled: "rgb(211, 211, 211)",
+  blue: "#6bbfff",
+  textMid: "#606d80",
 };
 
 export const fonts = {
-  regular: 'Outfit-Regular',
-  medium: 'Outfit-Medium',
-  semiBold: 'Outfit-SemiBold',
-  bold: 'Outfit-Bold',
-  black: 'Outfit-Black',
-  thin: 'Outfit-Thin',
-  extraBold: 'Outfit-ExtraBold',
-  extraLight: 'Outfit-ExtraLight',
-  thin: 'Outfit-Thin',
-  weight: 'Outfit-VariableFont_wght',
+  regular: "Outfit-Regular",
+  medium: "Outfit-Medium",
+  semiBold: "Outfit-SemiBold",
+  bold: "Outfit-Bold",
+  black: "Outfit-Black",
+  thin: "Outfit-Thin",
+  extraBold: "Outfit-ExtraBold",
+  extraLight: "Outfit-ExtraLight",
+  thin: "Outfit-Thin",
+  weight: "Outfit-VariableFont_wght",
 };
 
 export const fontSizes = {
@@ -64,7 +65,7 @@ export const globalStyles = StyleSheet.create({
     backgroundColor: colors.primary,
     padding: spacing.medium,
     borderRadius: 5,
-    alignItems: 'center',
+    alignItems: "center",
   },
   buttonText: {
     fontFamily: fonts.semiBold,
@@ -72,7 +73,6 @@ export const globalStyles = StyleSheet.create({
     color: colors.textLight,
   },
 });
-
 
 export const customTheme = {
   ...DefaultTheme,
@@ -91,8 +91,6 @@ export const customTheme = {
   },
 };
 
-
-
 export default {
   colors,
   fonts,
@@ -101,8 +99,3 @@ export default {
   globalStyles,
   customTheme,
 };
-
-
-
-
-

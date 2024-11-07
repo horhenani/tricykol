@@ -17,7 +17,7 @@
       "bundleIdentifier": "com.jurj.tricykol",
       "googleServicesFile": "./GoogleService-Info.plist",
       "config": {
-        "googleMapsApiKey": "AIzaSyD-SUpJni23bdP5tOAAlQhrYQTZHhv2ko8"
+        "googleMapsApiKey": "AIzaSyBzbVc59CAkACdm0mHAW0l3W_4TNfSPHT4"
       }
     },
     "android": {
@@ -38,7 +38,7 @@
       "googleServicesFile": "./google-services.json",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyD-SUpJni23bdP5tOAAlQhrYQTZHhv2ko8"
+          "apiKey": "AIzaSyDAbbCdjchqehJ_A5KD1-_0M2GSiaieD78"
         }
       },
       "softwareKeyboardLayoutMode": "pan"

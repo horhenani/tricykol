@@ -19,6 +19,8 @@ import NameStep from "@auth/NameStep";
 import BirthDateStep from "@auth/BirthDateStep";
 import SexStep from "@auth/SexStep";
 import Dashboard from "@app/Dashboard";
+import BookingScreen from "@app/bookings/BookingScreen";
+import LocationPicker from "@app/bookings/LocationPicker";
 import { registerRootComponent } from "expo";
 
 // Keep splash screen visible while loading
@@ -61,7 +63,23 @@ function Navigation() {
       >
         {user ? (
           // Authenticated stack
-          <Stack.Screen name="Dashboard" component={Dashboard} />
+          <>
+            <Stack.Screen name="Dashboard" component={Dashboard} />
+            <Stack.Screen
+              name="Booking"
+              component={BookingScreen}
+              options={{
+                animation: "fade_from_bottom",
+              }}
+            />
+            <Stack.Screen
+              name="LocationPicker"
+              component={LocationPicker}
+              options={{
+                animation: "default",
+              }}
+            />
+          </>
         ) : (
           // Non-authenticated stack
           <>
@@ -81,13 +99,13 @@ function Navigation() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <BottomSheetModalProvider>
-        <AuthProvider>
-          <PaperProvider theme={customTheme}>
+      <AuthProvider>
+        <PaperProvider theme={customTheme}>
+          <BottomSheetModalProvider>
             <Navigation />
-          </PaperProvider>
-        </AuthProvider>
-      </BottomSheetModalProvider>
+          </BottomSheetModalProvider>
+        </PaperProvider>
+      </AuthProvider>
     </GestureHandlerRootView>
   );
 }
