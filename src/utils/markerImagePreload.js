@@ -26,12 +26,12 @@ export const preloadMarkerImages = () => {
 export const getMarkerSize = (type) => {
   switch (type) {
     case "TRICYCLE":
-      return { width: 64, height: 64 };
+      return { width: 40, height: 40 };
     case "PICKUP":
-      return { width: 64, height: 64 };
+      return { width: 35, height: 45 };
     case "DESTINATION":
-      return { width: 64, height: 64 };
+      return { width: 35, height: 45 };
     default:
-      return { width: 64, height: 64 };
+      return { width: 40, height: 40 };
   }
 };

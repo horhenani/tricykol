@@ -8,8 +8,8 @@
     "scheme": "tricykol",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
+      "image": "./assets/splash2.png",
+      "resizeMode": "cover",
       "backgroundColor": "#ffffff"
     },
     "ios": {
@@ -17,7 +17,7 @@
       "bundleIdentifier": "com.jurj.tricykol",
       "googleServicesFile": "./GoogleService-Info.plist",
       "config": {
-        "googleMapsApiKey": "AIzaSyBzbVc59CAkACdm0mHAW0l3W_4TNfSPHT4"
+        "googleMapsApiKey": "AIzaSyDAbbCdjchqehJ_A5KD1-_0M2GSiaieD78"
       }
     },
     "android": {
@@ -28,10 +28,55 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE"
+        "FOREGROUND_SERVICE",
+        "SEND_SMS",
+        "CALL_PHONE",
+      ],
+    "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "tricykol",
+              "host": "*"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "SEND",
+          "data": {
+            "mimeType": "text/plain"
+          },
+          "category": [
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "SENDTO",
+          "data": {
+            "scheme": "sms"
+          },
+          "category": [
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "DIAL",
+          "data": {
+            "scheme": "tel"
+          },
+          "category": [
+            "DEFAULT"
+          ]
+        }
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.jurj.tricykol",
@@ -83,7 +128,8 @@
     "extra": {
       "eas": {
         "projectId": "140f952e-f4af-45fa-9cb1-dd19992798d7"
-      }
+      },
+      "googleMapsApiKey": "AIzaSyDAbbCdjchqehJ_A5KD1-_0M2GSiaieD78"
     },
     "owner": "jurj"
   }

@@ -18,6 +18,12 @@ const useLocationService = () => {
   const hasShownInitialAlert = useRef(false);
   const previousLocationState = useRef(null);
 
+  const locationUpdateTimeout = useRef(null);
+  const lastLocationUpdate = useRef(null);
+  const MIN_UPDATE_INTERVAL = 3000;
+
+  const locationWatcherRef = useRef(null);
+
   const getCurrentLocationWithAddress = async () => {
     try {
       // Use existing getCurrentLocation function
@@ -134,102 +140,145 @@ const useLocationService = () => {
     }
   }, []);
 
+  const handleLocationUpdate = useCallback((newLocation) => {
+    const now = Date.now();
+    if (
+      lastLocationUpdate.current &&
+      now - lastLocationUpdate.current < MIN_UPDATE_INTERVAL
+    ) {
+      return;
+    }
+
+    // Clear existing timeout
+    if (locationUpdateTimeout.current) {
+      clearTimeout(locationUpdateTimeout.current);
+    }
+
+    // Debounce location updates
+    locationUpdateTimeout.current = setTimeout(() => {
+      setLocation(newLocation);
+      lastLocationUpdate.current = now;
+    }, 300);
+  }, []);
+
   // Initialize location monitoring
   const startLocationMonitoring = useCallback(async () => {
+    if (locationWatcherRef.current) {
+      locationWatcherRef.current.remove();
+    }
+
     try {
-      if (locationWatcher) {
-        locationWatcher.remove();
-      }
-
-      const enabled = await checkLocationEnabled();
-      const hasPermission = await checkLocationPermission();
-
-      if (!enabled || !hasPermission) {
-        setLocation(null);
-        return;
-      }
-
       const subscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Balanced,
-          timeInterval: 3000,
-          distanceInterval: 5,
+          timeInterval: MIN_UPDATE_INTERVAL,
+          distanceInterval: 10,
         },
-        (newLocation) => {
-          setLocation(newLocation);
-        },
+        handleLocationUpdate,
       );
 
-      setLocationWatcher(subscription);
+      locationWatcherRef.current = subscription;
     } catch (error) {
       console.error("Error starting location monitoring:", error);
     }
-  }, [checkLocationEnabled, checkLocationPermission]);
+  }, []);
 
-  // Monitor location services status
   useEffect(() => {
-    let statusCheck;
     let isMounted = true;
+    let statusCheckInterval;
 
-    const monitorLocationServices = async () => {
-      try {
-        // Initial check
-        const enabled = await checkLocationEnabled();
+    const checkLocationStatus = async () => {
+      if (!isMounted) return;
+
+      const enabled = await checkLocationEnabled();
+      if (enabled !== isLocationEnabled) {
         setIsLocationEnabled(enabled);
-        previousLocationState.current = enabled;
 
-        // Show initial alert if needed
-        if (!enabled && !isFirstTimeUser && !hasShownInitialAlert.current) {
-          setShowLocationAlert(true);
-          hasShownInitialAlert.current = true;
+        if (enabled && hasLocationPermission) {
+          await startLocationMonitoring();
+        } else if (!enabled && locationWatcherRef.current) {
+          locationWatcherRef.current.remove();
+          setLocation(null);
         }
-
-        if (enabled) {
-          startLocationMonitoring();
-        }
-
-        // Set up monitoring interval
-        statusCheck = setInterval(async () => {
-          if (!isMounted) return;
-
-          const currentEnabled = await checkLocationEnabled();
-
-          // Only update state and show alert if there's an actual change
-          if (currentEnabled !== previousLocationState.current) {
-            setIsLocationEnabled(currentEnabled);
-
-            // Show alert only when location is newly disabled
-            if (!currentEnabled && !isFirstTimeUser) {
-              setShowLocationAlert(true);
-            }
-
-            // Handle location state change
-            if (!currentEnabled) {
-              setLocation(null);
-              if (locationWatcher) {
-                locationWatcher.remove();
-              }
-            } else {
-              startLocationMonitoring();
-            }
-
-            // Update previous state
-            previousLocationState.current = currentEnabled;
-          }
-        }, 3000);
-      } catch (error) {
-        console.error("Error in location services monitor:", error);
       }
     };
 
-    monitorLocationServices();
+    checkLocationStatus();
+    statusCheckInterval = setInterval(checkLocationStatus, 3000);
 
     return () => {
       isMounted = false;
-      if (statusCheck) clearInterval(statusCheck);
-      if (locationWatcher) locationWatcher.remove();
+      clearInterval(statusCheckInterval);
+      if (locationWatcherRef.current) {
+        locationWatcherRef.current.remove();
+      }
     };
-  }, [isFirstTimeUser, startLocationMonitoring]);
+  }, [hasLocationPermission]);
+
+  // Monitor location services status
+  // useEffect(() => {
+  //   let statusCheck;
+  //   let isMounted = true;
+  //
+  //   const monitorLocationServices = async () => {
+  //     try {
+  //       // Initial check
+  //       const enabled = await checkLocationEnabled();
+  //       setIsLocationEnabled(enabled);
+  //       previousLocationState.current = enabled;
+  //
+  //       // Show initial alert if needed
+  //       if (!enabled && !isFirstTimeUser && !hasShownInitialAlert.current) {
+  //         setShowLocationAlert(true);
+  //         hasShownInitialAlert.current = true;
+  //       }
+  //
+  //       if (enabled) {
+  //         startLocationMonitoring();
+  //       }
+  //
+  //       // Set up monitoring interval
+  //       statusCheck = setInterval(async () => {
+  //         if (!isMounted) return;
+  //
+  //         const currentEnabled = await checkLocationEnabled();
+  //
+  //         // Only update state and show alert if there's an actual change
+  //         if (currentEnabled !== previousLocationState.current) {
+  //           setIsLocationEnabled(currentEnabled);
+  //
+  //           // Show alert only when location is newly disabled
+  //           if (!currentEnabled && !isFirstTimeUser) {
+  //             setShowLocationAlert(true);
+  //           }
+  //
+  //           // Handle location state change
+  //           if (!currentEnabled) {
+  //             setLocation(null);
+  //             if (locationWatcher) {
+  //               locationWatcher.remove();
+  //             }
+  //           } else {
+  //             startLocationMonitoring();
+  //           }
+  //
+  //           // Update previous state
+  //           previousLocationState.current = currentEnabled;
+  //         }
+  //       }, 3000);
+  //     } catch (error) {
+  //       console.error("Error in location services monitor:", error);
+  //     }
+  //   };
+  //
+  //   monitorLocationServices();
+  //
+  //   return () => {
+  //     isMounted = false;
+  //     if (statusCheck) clearInterval(statusCheck);
+  //     if (locationWatcher) locationWatcher.remove();
+  //   };
+  // }, [isFirstTimeUser, startLocationMonitoring]);
 
   // Request location permission
   const requestLocationPermission = async () => {
@@ -284,6 +333,17 @@ const useLocationService = () => {
       return null;
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (locationUpdateTimeout.current) {
+        clearTimeout(locationUpdateTimeout.current);
+      }
+      if (locationWatcher) {
+        locationWatcher.remove();
+      }
+    };
+  }, []);
 
   return {
     location,

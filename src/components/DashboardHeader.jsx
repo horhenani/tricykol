@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { View, StyleSheet, Alert } from "react-native";
+import { View, StyleSheet, Alert, TouchableOpacity } from "react-native";
 import { Appbar, Portal, Modal, Button, Text } from "react-native-paper";
-import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@context/AuthContext";
 import { colors, fonts } from "@constants/globalStyles";
+import { useNavigation, DrawerActions } from "@react-navigation/native";
+import AntDesign from "@expo/vector-icons/AntDesign";
 
 const DashboardHeader = () => {
   const navigation = useNavigation();
@@ -26,18 +27,24 @@ const DashboardHeader = () => {
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <Appbar.Header style={styles.appbar}>
           <Appbar.Action
-            rippleColor={'transparent'}
+            rippleColor={"transparent"}
             style={styles.menuButton}
             icon="menu"
             color={colors.text}
-            onPress={() => {}} // No functionality for now
+            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
           />
           <Appbar.Content title="" />
-          <Appbar.Action
-            icon="logout"
-            color={colors.text}
-            onPress={() => setSignOutModalVisible(true)}
-          />
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.background,
+              padding: 10,
+              borderRadius: 100,
+              borderWidth: 1,
+              borderColor: colors.gray,
+            }}
+          >
+            <AntDesign name="customerservice" size={24} color="black" />
+          </TouchableOpacity>
         </Appbar.Header>
       </View>
 

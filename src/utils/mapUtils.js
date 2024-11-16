@@ -1,6 +1,6 @@
 // src/utils/mapUtils.js
 import { decode } from "@mapbox/polyline";
-import { GOOGLE_MAPS_API_KEY } from "@env";
+import { GOOGLE_MAPS_API_KEY } from "@config/keys";
 
 export const decodeDirectionsToCoordinates = (directions) => {
   if (!directions?.routes?.[0]) return [];

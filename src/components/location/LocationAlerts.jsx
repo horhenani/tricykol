@@ -7,6 +7,7 @@ import { colors, fonts } from "@constants/globalStyles";
 import CustomButton from "@components/CustomButton";
 import useLocationService from "@services/useLocationService";
 import { useState, useEffect } from "react";
+import Fontisto from "@expo/vector-icons/Fontisto";
 
 // Welcome modal for new users in Dashboard
 export const WelcomeLocationModal = ({
@@ -209,6 +210,143 @@ export const LocationDisabledAlert = ({ visible, onDismiss }) => {
   );
 };
 
+export const DriverWelcomeLocationModal = ({
+  visible,
+  onDismiss,
+  userName,
+  onRequestPermission,
+  onOpenSettings,
+  isLocationEnabled,
+  hasLocationPermission,
+}) => {
+  const insets = useSafeAreaInsets();
+  const [permissionChecked, setPermissionChecked] = useState(false);
+  const [locationChecked, setLocationChecked] = useState(false);
+  const [setupComplete, setSetupComplete] = useState(false);
+
+  const { checkLocationPermission } = useLocationService();
+
+  // Reset states when modal becomes visible
+  useEffect(() => {
+    if (!isLocationEnabled || !hasLocationPermission) {
+      setPermissionChecked(hasLocationPermission);
+      setLocationChecked(isLocationEnabled);
+      setSetupComplete(false);
+    }
+  }, [isLocationEnabled, hasLocationPermission]);
+
+  // Watch for changes in location permission and service status
+  useEffect(() => {
+    if (visible) {
+      setPermissionChecked(hasLocationPermission);
+      setLocationChecked(isLocationEnabled);
+
+      if (hasLocationPermission && isLocationEnabled) {
+        setSetupComplete(true);
+      }
+    }
+  }, [hasLocationPermission, isLocationEnabled, visible]);
+
+  const handleRequestPermission = async () => {
+    try {
+      const granted = await onRequestPermission();
+      if (granted) {
+        setPermissionChecked(true);
+        await checkLocationPermission?.();
+      }
+    } catch (error) {
+      console.error("Error requesting location permission:", error);
+    }
+  };
+
+  const handleGetStarted = async () => {
+    if (setupComplete && onDismiss) {
+      await onDismiss();
+    }
+  };
+
+  const renderSetupButton = (title, onPress, isChecked) => (
+    <TouchableOpacity
+      style={[styles.setupButton, isChecked && styles.completedButton]}
+      onPress={onPress}
+      disabled={isChecked}
+      activeOpacity={0.7}
+    >
+      <Checkbox.Android
+        status={isChecked ? "checked" : "unchecked"}
+        color={colors.text}
+      />
+      <Text
+        style={[
+          styles.setupButtonText,
+          isChecked && styles.completedButtonText,
+        ]}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <Portal>
+      <Modal
+        visible={visible}
+        onDismiss={null}
+        contentContainerStyle={[
+          styles.modalContainer,
+          { paddingTop: insets.top },
+        ]}
+      >
+        <View style={styles.welcomeContent}>
+          <Fontisto name="motorcycle" size={60} color={colors.primary} />
+
+          <Text style={styles.welcomeTitle}>
+            Welcome Angkol{userName ? `, ${userName}` : ""}! 🎉
+          </Text>
+
+          <Text style={styles.welcomeMessage}>
+            To start accepting bookings, we need location access to connect you
+            with nearby passengers. Please complete these steps:
+          </Text>
+
+          {!setupComplete ? (
+            <View style={styles.setupSteps}>
+              {renderSetupButton(
+                "Allow Location access",
+                handleRequestPermission,
+                permissionChecked,
+              )}
+              {renderSetupButton(
+                "Enable Location",
+                onOpenSettings,
+                locationChecked,
+              )}
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.getStartedButton}
+              onPress={handleGetStarted}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.getStartedButtonText}>
+                Start Accepting Bookings
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Additional driver-specific info */}
+          <View style={styles.driverInfo}>
+            <Text style={styles.driverInfoText}>
+              Remember: Keep your location enabled while online to receive
+              nearby booking requests.
+            </Text>
+          </View>
+        </View>
+      </Modal>
+    </Portal>
+  );
+};
+
 const styles = StyleSheet.create({
   modalContainer: {
     margin: 20,
@@ -362,5 +500,18 @@ const styles = StyleSheet.create({
   button: {
     width: "100%",
     marginTop: 10,
+  },
+
+  driverInfo: {
+    marginTop: 24,
+    padding: 16,
+    backgroundColor: colors.primary + "10",
+    borderRadius: 8,
+  },
+  driverInfoText: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    textAlign: "center",
   },
 });

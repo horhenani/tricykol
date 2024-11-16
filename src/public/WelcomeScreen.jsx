@@ -6,8 +6,13 @@ import { colors, fonts, fontSizes } from "@constants/globalStyles";
 import CustomButton from "@components/CustomButton";
 
 const WelcomeScreen = ({ navigation }) => {
-  const handleUserTypeSelect = (userType) => {
-    navigation.navigate("Register", { userType });
+  const handlePassengerRegister = () => {
+    navigation.navigate("Register", { userType: "passenger" });
+  };
+
+  const handleDriverRegister = () => {
+    // Navigate directly to driver registration route
+    navigation.navigate("DriverRegister");
   };
 
   return (
@@ -36,12 +41,12 @@ const WelcomeScreen = ({ navigation }) => {
 
           <CustomButton
             title="Book a Tricykol"
-            onPress={() => handleUserTypeSelect("passenger")}
+            onPress={handlePassengerRegister}
             style={styles.passengerButton}
           />
           <CustomButton
             title="Be an Angkol Rider"
-            onPress={() => handleUserTypeSelect("driver")}
+            onPress={handleDriverRegister}
             style={styles.riderButton}
             buttonTextStyle={{ color: colors.text }}
           />
@@ -87,8 +92,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 120,
-    height: 180,
+    width: 135,
+    height: 190,
     marginBottom: 20,
   },
   title: {

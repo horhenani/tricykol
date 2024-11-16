@@ -5,7 +5,7 @@ import CustomButton from "@components/CustomButton";
 import { colors, fonts } from "@constants/globalStyles";
 import Entypo from "@expo/vector-icons/Entypo";
 
-const BookButton = ({ onPress, disabled }) => {
+const BookButton = ({ onPress, disabled, pickup, dropoff, routeInfo }) => {
   const insets = useSafeAreaInsets();
 
   return (
@@ -14,15 +14,19 @@ const BookButton = ({ onPress, disabled }) => {
         <TouchableOpacity>
           <View style={styles.scheduleBookContainer}>
             <Text style={styles.scheduleBookText}>Advance Booking</Text>
-            <Entypo name="chevron-small-right" size={24} color={colors.textMid} />
+            <Entypo
+              name="chevron-small-right"
+              size={24}
+              color={colors.textMid}
+            />
           </View>
         </TouchableOpacity>
         <View style={styles.bookButton}>
           <CustomButton
-            title="Book"
+            title={disabled ? "Ride in Progress" : "Book"}
             onPress={onPress}
             disabled={disabled}
-            style={styles.button}
+            style={[styles.button, disabled && styles.disabledButton]}
           />
         </View>
       </View>

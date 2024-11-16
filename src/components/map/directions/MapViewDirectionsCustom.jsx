@@ -1,24 +1,66 @@
 // src/components/map/MapViewDirectionsCustom.jsx
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import MapViewDirections from "react-native-maps-directions";
 import { View, StyleSheet } from "react-native";
 import { Text } from "react-native-paper";
 import { GOOGLE_MAPS_API_KEY } from "@config/keys";
 import { colors, fonts } from "@constants/globalStyles";
 
+const DEFAULT_EDGE_PADDING = {
+  top: 100,
+  right: 50,
+  bottom: 100,
+  left: 50,
+};
+
+const DEFAULT_DRIVER_EDGE_PADDING = {
+  top: 150,
+  right: 50,
+  bottom: 200,
+  left: 50,
+};
+
 const MapViewDirectionsCustom = ({
   origin,
   destination,
   mapRef,
   onRouteInfoUpdate,
-  strokeWidth = 5,
+  strokeWidth = 4,
   strokeColor = colors.blue,
   mode = "DRIVING",
   showRouteInfo = true,
   routeInfoStyle,
+  isDriverView = false,
+  waypoints,
 }) => {
+  // Memoize edge padding based on view type
+  const edgePadding = useMemo(
+    () => (isDriverView ? DEFAULT_DRIVER_EDGE_PADDING : DEFAULT_EDGE_PADDING),
+    [isDriverView],
+  );
+
+  // Memoize coordinates for optimization
+  const coordinates = useMemo(() => {
+    if (!origin || !destination) return null;
+    return {
+      origin: {
+        latitude: origin.latitude,
+        longitude: origin.longitude,
+      },
+      destination: {
+        latitude: destination.latitude,
+        longitude: destination.longitude,
+      },
+    };
+  }, [
+    origin?.latitude,
+    origin?.longitude,
+    destination?.latitude,
+    destination?.longitude,
+  ]);
+
   const calculateFare = useCallback((distanceInKm) => {
-    const baseFare = 40;
+    const baseFare = 30;
     const ratePerKm = 5;
     const additionalKm = Math.max(0, distanceInKm - 1);
     return Math.ceil(baseFare + additionalKm * ratePerKm);
@@ -26,6 +68,8 @@ const MapViewDirectionsCustom = ({
 
   const handleRouteReady = useCallback(
     (result) => {
+      if (!result || !result.coordinates?.length) return;
+
       const routeInfo = {
         distance: result.distance,
         duration: result.duration,
@@ -33,15 +77,11 @@ const MapViewDirectionsCustom = ({
         fare: calculateFare(result.distance),
       };
 
-      if (mapRef?.current?.fitToCoordinates) {
+      // Fit map to show full route with proper padding
+      if (mapRef?.current?.fitToCoordinates && result.coordinates?.length > 0) {
         try {
           mapRef.current.fitToCoordinates(result.coordinates, {
-            edgePadding: {
-              top: 50,
-              right: 50,
-              bottom: 50,
-              left: 50,
-            },
+            edgePadding,
             animated: true,
           });
         } catch (error) {
@@ -49,19 +89,15 @@ const MapViewDirectionsCustom = ({
         }
       }
 
-      if (onRouteInfoUpdate) {
-        onRouteInfoUpdate(routeInfo);
-      }
+      onRouteInfoUpdate?.(routeInfo);
     },
-    [mapRef, onRouteInfoUpdate, calculateFare],
+    [mapRef, edgePadding, onRouteInfoUpdate, calculateFare],
   );
 
   const handleError = useCallback(
     (error) => {
       console.error("Directions Error:", error);
-      if (onRouteInfoUpdate) {
-        onRouteInfoUpdate(null, error);
-      }
+      onRouteInfoUpdate?.(null, error);
     },
     [onRouteInfoUpdate],
   );
@@ -78,12 +114,13 @@ const MapViewDirectionsCustom = ({
     }
   }, [origin, destination, mapRef]);
 
-  if (!origin || !destination || !GOOGLE_MAPS_API_KEY) return null;
+  if (!coordinates || !GOOGLE_MAPS_API_KEY || !mapRef?.current) return null;
 
   return (
     <MapViewDirections
-      origin={origin}
-      destination={destination}
+      origin={coordinates.origin}
+      destination={coordinates.destination}
+      waypoints={waypoints}
       apikey={GOOGLE_MAPS_API_KEY}
       strokeWidth={strokeWidth}
       strokeColor={strokeColor}
@@ -93,6 +130,15 @@ const MapViewDirectionsCustom = ({
       onReady={handleRouteReady}
       onError={handleError}
       resetOnChange={false}
+      optimizeWaypoints={true}
+      splitWaypoints={true}
+      language="en"
+      region="ph"
+      // strokePattern={[1]}
+      // lineDashPattern={[1]}
+      // lineCap="round"
+      // lineJoin="round"
+      geodesic={true}
     />
   );
 };
@@ -141,4 +187,14 @@ const styles = StyleSheet.create({
   },
 });
 
-export default React.memo(MapViewDirectionsCustom);
+export default React.memo(MapViewDirectionsCustom, (prevProps, nextProps) => {
+  return (
+    prevProps.origin?.latitude === nextProps.origin?.latitude &&
+    prevProps.origin?.longitude === nextProps.origin?.longitude &&
+    prevProps.destination?.latitude === nextProps.destination?.latitude &&
+    prevProps.destination?.longitude === nextProps.destination?.longitude &&
+    prevProps.strokeColor === nextProps.strokeColor &&
+    prevProps.strokeWidth === nextProps.strokeWidth &&
+    prevProps.mode === nextProps.mode
+  );
+});

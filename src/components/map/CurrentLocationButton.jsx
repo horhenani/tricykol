@@ -32,7 +32,7 @@ const styles = StyleSheet.create({
   button: {
     position: "absolute",
     right: 16,
-    bottom: 200,
+    // bottom: 200,
     backgroundColor: colors.background,
     width: 45,
     height: 45,
@@ -50,8 +50,8 @@ const styles = StyleSheet.create({
         elevation: 5,
       },
     }),
-    borderColor: colors.gray,
-    borderWidth: 1,
+    // borderColor: colors.gray,
+    // borderWidth: 1,
   },
 });
 

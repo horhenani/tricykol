@@ -1,0 +1,300 @@
+import React, { createContext, useState, useContext, useEffect, useRef } from "react";
+import auth from "@react-native-firebase/auth";
+import firestore from "@react-native-firebase/firestore";
+import * as SecureStore from "expo-secure-store";
+import * as Location from "expo-location";
+import { Alert, Linking, Platform } from "react-native";
+import BookingPersistenceService from "@services/bookingPersistenceService";
+
+const AuthContext = createContext({});
+
+const AUTH_PERSISTENCE_KEYS = {
+  USER_DATA: "@tricykol:user_data",
+  AUTH_TOKEN: "@tricykol:auth_token",
+  LAST_ACTIVE: "@tricykol:last_active",
+};
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [locationPermission, setLocationPermission] = useState(false);
+  const authStateRef = useRef(null);
+
+  const updateUserSession = async (userData) => {
+    try {
+      if (userData?.uid) {
+        await SecureStore.setItemAsync(
+          AUTH_PERSISTENCE_KEYS.USER_DATA,
+          JSON.stringify(userData),
+        );
+        await SecureStore.setItemAsync(
+          AUTH_PERSISTENCE_KEYS.LAST_ACTIVE,
+          Date.now().toString(),
+        );
+
+        // Get fresh token
+        const token = auth().currentUser
+          ? await auth().currentUser.getIdToken(true)
+          : null;
+
+        if (token) {
+          await SecureStore.setItemAsync(
+            AUTH_PERSISTENCE_KEYS.AUTH_TOKEN,
+            token,
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error updating user session:", error);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = auth().onAuthStateChanged(async (firebaseUser) => {
+      try {
+        if (firebaseUser) {
+          // Get user profile data from Firestore
+          const userDoc = await firestore()
+            .collection("users")
+            .doc(firebaseUser.uid)
+            .get();
+
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+            // Store complete user data
+            const fullUserData = {
+              uid: firebaseUser.uid, // Ensure uid is always present
+              email: firebaseUser.email,
+              phoneNumber: firebaseUser.phoneNumber,
+              ...userData,
+            };
+
+            setUser(fullUserData);
+
+            // Store user data in secure storage for persistence
+            await SecureStore.setItemAsync(
+              "userData",
+              JSON.stringify(fullUserData),
+            );
+
+            // Store auth token
+            const token = await firebaseUser.getIdToken();
+            await SecureStore.setItemAsync("userToken", token);
+          } else {
+            setUser(null);
+            await SecureStore.deleteItemAsync("userData");
+            await SecureStore.deleteItemAsync("userToken");
+          }
+        } else {
+          setUser(null);
+          await SecureStore.deleteItemAsync("userData");
+          await SecureStore.deleteItemAsync("userToken");
+        }
+      } catch (error) {
+        console.error("Error in auth state change:", error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        // Add this line to request location permission first
+        // await requestLocationPermission();
+
+        // Your existing auth code stays the same
+        const unsubscribe = auth().onAuthStateChanged(async (user) => {
+          if (user) {
+            try {
+              const userDoc = await firestore()
+                .collection("users")
+                .doc(user.uid)
+                .get();
+
+              if (userDoc.exists) {
+                const userData = userDoc.data();
+                setUser({ ...user, ...userData });
+                const token = await user.getIdToken();
+                await SecureStore.setItemAsync("userToken", token);
+              } else {
+                setUser(null);
+              }
+            } catch (error) {
+              console.error("Error fetching user data:", error);
+              setUser(null);
+            }
+          } else {
+            setUser(null);
+            await SecureStore.deleteItemAsync("userToken");
+          }
+          setLoading(false);
+        });
+
+        return unsubscribe;
+      } catch (error) {
+        console.error("Error initializing app:", error);
+        setLoading(false);
+      }
+    };
+
+    initializeApp();
+  }, []);
+
+
+  const requestLocationPermission = async () => {
+    try {
+      const { status: foregroundStatus } =
+        await Location.requestForegroundPermissionsAsync();
+
+      if (foregroundStatus !== "granted") {
+        Alert.alert(
+          "Location Access Required",
+          "Tricykol needs access to your location to connect you with nearby riders. Please enable location services to continue.",
+          [
+            {
+              text: "Open Settings",
+              onPress: () => {
+                if (Platform.OS === "ios") {
+                  Linking.openURL("app-settings:");
+                } else {
+                  Linking.openSettings();
+                }
+              },
+            },
+            { text: "Cancel", style: "cancel" },
+          ],
+        );
+        return false;
+      }
+
+      if (foregroundStatus === "granted") {
+        const { status: backgroundStatus } =
+          await Location.requestBackgroundPermissionsAsync();
+
+        if (backgroundStatus !== "granted") {
+          Alert.alert(
+            "Background Location",
+            "For the best experience, please allow background location access.",
+            [{ text: "OK" }],
+          );
+        }
+      }
+
+      setLocationPermission(true);
+      return true;
+    } catch (error) {
+      console.error("Error requesting location permission:", error);
+      return false;
+    }
+  };
+
+  // Helper function to check if user exists in Firestore
+  const checkUserExists = async (uid) => {
+    try {
+      const userDoc = await firestore().collection("users").doc(uid).get();
+      return userDoc.exists;
+    } catch (error) {
+      console.error("Error checking user existence:", error);
+      return false;
+    }
+  };
+
+  // Phone number sign in/registration
+  const signInWithPhone = async (phoneNumber) => {
+    try {
+      const formattedNumber = `+63${phoneNumber.replace(/[^0-9]/g, "")}`;
+      const confirmation = await auth().signInWithPhoneNumber(formattedNumber);
+      return confirmation;
+    } catch (error) {
+      console.error("Phone sign in error:", error);
+      throw error;
+    }
+  };
+
+  // Create new user profile
+  const createUserProfile = async (userId, userData) => {
+    try {
+      await firestore()
+        .collection("users")
+        .doc(userId)
+        .set({
+          ...userData,
+          createdAt: firestore.FieldValue.serverTimestamp(),
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+          status: "active",
+        });
+
+      // Update the user state with the new profile data
+      setUser({
+        uid: userId,
+        ...userData,
+      });
+
+      // Store auth token
+      const currentUser = auth().currentUser;
+      if (currentUser) {
+        const token = await currentUser.getIdToken();
+        await SecureStore.setItemAsync("userToken", token);
+      }
+    } catch (error) {
+      console.error("Create profile error:", error);
+      throw error;
+    }
+  };
+
+  // Sign out
+  const signOut = async () => {
+    try {
+      // First clear any active bookings
+      if (user?.uid) {
+        await BookingPersistenceService.clearActiveBooking(user.uid);
+      }
+
+      // Clear all auth data
+      await Promise.all([
+        SecureStore.deleteItemAsync(AUTH_PERSISTENCE_KEYS.USER_DATA),
+        SecureStore.deleteItemAsync(AUTH_PERSISTENCE_KEYS.AUTH_TOKEN),
+        SecureStore.deleteItemAsync(AUTH_PERSISTENCE_KEYS.LAST_ACTIVE),
+      ]);
+
+      // Finally sign out from Firebase
+      await auth().signOut();
+      setUser(null);
+    } catch (error) {
+      console.error("Sign out error:", error);
+      throw error;
+    }
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        locationPermission,
+        requestLocationPermission,
+        signInWithPhone,
+        createUserProfile,
+        signOut,
+        setUser,
+        checkUserExists,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+// Custom hook to use auth context
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+};

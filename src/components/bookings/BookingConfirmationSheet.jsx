@@ -1,201 +1,425 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { View, StyleSheet, BackHandler } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  View,
+  Modal,
+  StyleSheet,
+  Animated,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  Dimensions,
+  BackHandler,
+  ScrollView,
+} from "react-native";
 import { Text } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { BottomSheetModal, BottomSheetBackdrop, BottomSheetView } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, fonts } from "@constants/globalStyles";
 import CustomButton from "@components/CustomButton";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BookingService } from "@services/bookingService";
+import { useAuth } from "@context/AuthContext";
+import { showMessage } from "react-native-flash-message";
+import firestore from "@react-native-firebase/firestore";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const BookingConfirmationSheet = ({
-  bottomSheetRef,
-  isVisible,
-  onClose,
-  onConfirm,
+  visible,
+  onDismiss,
   pickup,
   dropoff,
   routeInfo,
-  isLoading,
+  navigation,
 }) => {
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  const [isBooking, setIsBooking] = useState(false);
+  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
-  // Variables for bottom sheet
-  const snapPoints = useMemo(() => ["50%", "75%"], []);
-  // const [selectedPayment, setSelectedPayment] = useState(PaymentMethod.CASH);
+  useEffect(() => {
+    console.log("Sheet received props:", {
+      visible,
+      pickup,
+      dropoff,
+      routeInfo,
+    });
+  }, [visible, pickup, dropoff, routeInfo]);
 
-  // Callbacks for bottom sheet
-  const handleSheetChanges = useCallback(
-    (index) => {
-      if (index === -1) {
-        onClose();
-      }
-    },
-    [onClose],
-  );
+  useEffect(() => {
+    if (!user?.uid) {
+      console.error("No user ID found:", user);
+    }
+  }, [user]);
 
-  // Backdrop component
-  const renderBackdrop = useCallback(
-    (props) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
-      />
-    ),
-    [],
-  );
+  // Handle animations
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 8,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 0.5,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: SCREEN_HEIGHT,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible]);
+
+  // Handle back button press
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        if (visible) {
+          handleDismiss();
+          return true;
+        }
+        return false;
+      },
+    );
+
+    return () => backHandler.remove();
+  }, [visible]);
+
+  const handleConfirmBooking = async () => {
+    if (isBooking || !pickup || !dropoff || !routeInfo || !user?.uid) {
+      showMessage({
+        message: "Invalid Booking Data",
+        description: "Please ensure all booking details are provided",
+        type: "warning",
+      });
+      return;
+    }
+
+    setIsBooking(true);
+    try {
+      const bookingData = {
+        userId: user.uid,
+        pickup: {
+          latitude: pickup.latitude,
+          longitude: pickup.longitude,
+          address: pickup.title || "Selected Location",
+          description: pickup.description || "",
+        },
+        dropoff: {
+          latitude: dropoff.latitude,
+          longitude: dropoff.longitude,
+          address: dropoff.title || "Selected Location",
+          description: dropoff.description || "",
+        },
+        route: {
+          distance: routeInfo.distance,
+          duration: routeInfo.duration,
+          fare: routeInfo.fare,
+          coordinates: routeInfo.coordinates,
+        },
+        payment: {
+          method: "cash",
+          status: "pending",
+          amount: routeInfo.fare,
+        },
+        passengerInfo: {
+          name:
+            user.firstName && user.lastName
+              ? `${user.firstName} ${user.lastName}`
+              : "Anonymous",
+          phone: user.phoneNumber || "",
+        },
+        region: "paniqui",
+      };
+
+      const booking = await BookingService.createBooking(bookingData);
+
+      // Close sheet first
+      handleDismiss();
+
+      // Quick navigate back to dashboard with booking data
+      navigation.reset({
+        index: 0,
+        routes: [
+          {
+            name: "Dashboard",
+            params: {
+              booking: {
+                id: booking.id,
+                pickup: {
+                  latitude: booking.pickup.latitude,
+                  longitude: booking.pickup.longitude,
+                  address: booking.pickup.address,
+                  description: booking.pickup.description,
+                },
+                dropoff: {
+                  latitude: booking.dropoff.latitude,
+                  longitude: booking.dropoff.longitude,
+                  address: booking.dropoff.address,
+                  description: booking.dropoff.description,
+                },
+                route: {
+                  coordinates: booking.route.coordinates,
+                  distance: booking.route.distance,
+                  duration: booking.route.duration,
+                  fare: booking.route.fare,
+                },
+                payment: booking.payment,
+                status: booking.status,
+                passengerInfo: booking.passengerInfo,
+              },
+            },
+          },
+        ],
+      });
+
+      // Show success message after navigation
+      showMessage({
+        message: "Booking Created",
+        description: "Looking for nearby drivers...",
+        type: "success",
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error("Error creating booking:", error);
+      showMessage({
+        message: "Booking Failed",
+        description: error.message || "Please try again",
+        type: "danger",
+      });
+    } finally {
+      setIsBooking(false);
+    }
+  };
+
+  const handleDismiss = () => {
+    if (!isBooking) {
+      onDismiss();
+    }
+  };
+
+  if (!visible) return null;
 
   return (
-    <BottomSheetModal
-      ref={bottomSheetRef}
-      index={0}
-      snapPoints={snapPoints}
-      onChange={handleSheetChanges}
-      backdropComponent={renderBackdrop}
-      handleIndicatorStyle={styles.handleIndicator}
-      backgroundStyle={styles.sheetBackground}
-      enablePanDownToClose={true}
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={handleDismiss}
+      statusBarTranslucent
     >
-      <BottomSheetView style={[styles.contentContainer, { paddingBottom: insets.bottom }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Confirm Booking</Text>
-          <MaterialCommunityIcons
-            name="close"
-            size={24}
-            color={colors.text}
-            onPress={onClose}
-            style={styles.closeIcon}
+      <View style={styles.modalContainer}>
+        {/* Backdrop */}
+        <TouchableWithoutFeedback onPress={handleDismiss}>
+          <Animated.View
+            style={[
+              styles.backdrop,
+              {
+                opacity: backdropOpacity,
+              },
+            ]}
           />
-        </View>
+        </TouchableWithoutFeedback>
 
-        {/* Route Details */}
-        <View style={styles.routeDetails}>
-          <View style={styles.locationItem}>
-            <MaterialCommunityIcons
-              name="map-marker"
-              size={24}
-              color={colors.primary}
-            />
-            <View style={styles.locationText}>
-              <Text style={styles.locationLabel}>Pickup</Text>
-              <Text style={styles.locationName}>{pickup?.title}</Text>
-              <Text style={styles.locationDescription} numberOfLines={1}>
-                {pickup?.description}
-              </Text>
-            </View>
+        {/* Sheet Content */}
+        <Animated.View
+          style={[
+            styles.sheetContainer,
+            {
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          {/* Header - Fixed */}
+          <View style={styles.header}>
+            <View style={styles.handle} />
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={handleDismiss}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MaterialCommunityIcons
+                name="close"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+            <Text style={styles.title}>Confirm Booking</Text>
           </View>
 
-          <View style={styles.dividerContainer}>
-            <View style={styles.verticalLine} />
-          </View>
-
-          <View style={styles.locationItem}>
-            <MaterialCommunityIcons
-              name="map-marker-check"
-              size={24}
-              color={colors.secondary}
-            />
-            <View style={styles.locationText}>
-              <Text style={styles.locationLabel}>Drop-off</Text>
-              <Text style={styles.locationName}>{dropoff?.title}</Text>
-              <Text style={styles.locationDescription} numberOfLines={1}>
-                {dropoff?.description}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Trip Information */}
-        {routeInfo && (
-          <View style={styles.tripInfo}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <MaterialCommunityIcons
-                  name="map-marker-distance"
-                  size={20}
-                  color={colors.text}
-                />
-                <Text style={styles.infoText}>
-                  {routeInfo.distance.toFixed(1)} km
-                </Text>
-              </View>
-
-              <View style={styles.infoItem}>
-                <MaterialCommunityIcons
-                  name="clock-outline"
-                  size={20}
-                  color={colors.text}
-                />
-                <Text style={styles.infoText}>
-                  {Math.ceil(routeInfo.duration)} mins
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.fareContainer}>
-              <Text style={styles.fareLabel}>Total Fare</Text>
-              <View style={styles.fareAmount}>
-                <MaterialCommunityIcons
-                  name="cash"
-                  size={24}
+          {/* Scrollable Content */}
+          <ScrollView
+            style={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            bounces={true}
+          >
+            <View style={styles.content}>
+              {/* Location Details */}
+              <View style={styles.locationContainer}>
+                <LocationDetail
+                  icon="map-marker"
                   color={colors.primary}
+                  title="Pickup Location"
+                  location={pickup?.title}
+                  description={pickup?.description}
                 />
-                <Text style={styles.fareText}>₱{routeInfo.fare}</Text>
+                <View style={styles.routeIndicator} />
+                <LocationDetail
+                  icon="map-marker-check"
+                  color={colors.secondary}
+                  title="Drop-off Location"
+                  location={dropoff?.title}
+                  description={dropoff?.description}
+                />
               </View>
+
+              {/* Trip Information */}
+              {routeInfo && (
+                <View style={styles.tripInfo}>
+                  <TripInfoItem
+                    icon="map-marker-distance"
+                    label="Distance"
+                    value={`${routeInfo.distance.toFixed(1)} km`}
+                  />
+                  <TripInfoItem
+                    icon="clock-outline"
+                    label="Duration"
+                    value={`${Math.ceil(routeInfo.duration)} mins`}
+                  />
+                  <TripInfoItem
+                    icon="cash"
+                    label="Fare"
+                    value={`₱${routeInfo.fare}`}
+                    highlighted
+                  />
+                </View>
+              )}
+            </View>
+          </ScrollView>
+
+          {/* Actions - Fixed at bottom */}
+          <View
+            style={[styles.actionsContainer, { paddingBottom: insets.bottom }]}
+          >
+            <View style={styles.actions}>
+              <CustomButton
+                title="Cancel"
+                onPress={handleDismiss}
+                style={styles.cancelButton}
+                buttonTextStyle={styles.cancelButtonText}
+              />
+              <CustomButton
+                title="Confirm Booking"
+                onPress={handleConfirmBooking}
+                loading={isBooking}
+                disabled={isBooking || !pickup || !dropoff}
+                style={styles.confirmButton}
+              />
             </View>
           </View>
-        )}
-
-        {/* Action Buttons */}
-        <View style={styles.actions}>
-          <CustomButton
-            title="Cancel"
-            onPress={onClose}
-            style={[styles.button, styles.cancelButton]}
-            buttonTextStyle={styles.cancelButtonText}
-          />
-          <CustomButton
-            title="Confirm Booking"
-            onPress={onConfirm}
-            style={[styles.button, styles.confirmButton]}
-            loading={isLoading}
-            disabled={isLoading}
-          />
-        </View>
-      </BottomSheetView>
-    </BottomSheetModal>
+        </Animated.View>
+      </View>
+    </Modal>
   );
 };
 
+// Helper Components
+const LocationDetail = ({ icon, color, title, location, description }) => (
+  <View style={styles.locationDetail}>
+    <MaterialCommunityIcons name={icon} size={24} color={color} />
+    <View style={styles.locationInfo}>
+      <Text style={styles.locationLabel}>{title}</Text>
+      <Text style={styles.locationText}>{location}</Text>
+      <Text style={styles.locationDescription} numberOfLines={1}>
+        {description}
+      </Text>
+    </View>
+  </View>
+);
+
+const TripInfoItem = ({ icon, label, value, highlighted }) => (
+  <View style={styles.tripInfoItem}>
+    <MaterialCommunityIcons
+      name={icon}
+      size={20}
+      color={highlighted ? colors.primary : colors.text}
+    />
+    <View style={styles.tripInfoContent}>
+      <Text style={styles.tripInfoLabel}>{label}</Text>
+      <Text
+        style={[
+          styles.tripInfoValue,
+          highlighted && { color: colors.primary, fontSize: 18 },
+        ]}
+      >
+        {value}
+      </Text>
+    </View>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  sheetBackground: {
-    backgroundColor: colors.background,
-  },
-  contentContainer: {
+  modalContainer: {
     flex: 1,
-    paddingHorizontal: 20,
+    justifyContent: "flex-end",
   },
-  handleIndicator: {
-    backgroundColor: colors.gray,
-    width: 40,
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#000",
+  },
+  sheetContainer: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    minHeight: "70%",
+    maxHeight: "90%",
+  },
+  scrollContent: {
+    flex: 1,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray + "20",
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.gray + "40",
+    borderRadius: 2,
+    marginBottom: 12,
+  },
+  closeButton: {
+    position: "absolute",
+    right: 16,
+    top: 12,
+    padding: 4,
   },
   title: {
     fontSize: 20,
     fontFamily: fonts.semiBold,
     color: colors.text,
   },
-  closeIcon: {
-    padding: 4,
+  content: {
+    padding: 20,
   },
-  routeDetails: {
+  locationContainer: {
     backgroundColor: colors.background,
     borderRadius: 12,
     padding: 16,
@@ -203,12 +427,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.gray + "20",
   },
-  locationItem: {
+  locationDetail: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingVertical: 8,
+    marginBottom: 12,
   },
-  locationText: {
+  locationInfo: {
     marginLeft: 12,
     flex: 1,
   },
@@ -218,7 +442,7 @@ const styles = StyleSheet.create({
     color: colors.gray,
     marginBottom: 2,
   },
-  locationName: {
+  locationText: {
     fontSize: 16,
     fontFamily: fonts.semiBold,
     color: colors.text,
@@ -229,80 +453,71 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.gray,
   },
-  dividerContainer: {
-    alignItems: "center",
-    paddingLeft: 11,
-    paddingVertical: 4,
-  },
-  verticalLine: {
+  routeIndicator: {
     width: 1,
-    height: 20,
+    height: 24,
     backgroundColor: colors.gray + "40",
+    marginLeft: 12,
+    marginVertical: 4,
   },
   tripInfo: {
     backgroundColor: colors.background,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 20,
     borderWidth: 1,
     borderColor: colors.gray + "20",
+    marginBottom: 20,
   },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  infoItem: {
+  tripInfoItem: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 12,
+    paddingRight: 16,
   },
-  infoText: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontFamily: fonts.medium,
-    color: colors.text,
+  tripInfoContent: {
+    marginLeft: 12,
+    flex: 1,
   },
-  fareContainer: {
-    borderTopWidth: 1,
-    borderTopColor: colors.gray + "20",
-    paddingTop: 16,
-  },
-  fareLabel: {
-    fontSize: 14,
+  tripInfoLabel: {
+    fontSize: 12,
     fontFamily: fonts.medium,
     color: colors.gray,
-    marginBottom: 8,
+    marginBottom: 2,
   },
-  fareAmount: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  fareText: {
-    marginLeft: 8,
-    fontSize: 24,
+  tripInfoValue: {
+    fontSize: 16,
     fontFamily: fonts.semiBold,
-    color: colors.primary,
+    color: colors.text,
   },
   actions: {
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
-    marginTop: "auto",
-    paddingTop: 20,
-  },
-  button: {
-    flex: 1,
   },
   cancelButton: {
+    flex: 1,
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: colors.gray,
+    borderColor: colors.gray + "40",
   },
   cancelButtonText: {
     color: colors.text,
   },
   confirmButton: {
-    backgroundColor: colors.primary,
+    flex: 1,
+  },
+  actionsContainer: {
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray + "20",
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+
+  actions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
   },
 });
 

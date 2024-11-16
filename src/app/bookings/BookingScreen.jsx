@@ -11,7 +11,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
-import { Text, TextInput, Divider } from "react-native-paper";
+import { Text, TextInput, Divider, Portal } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import firestore from "@react-native-firebase/firestore";
 import { colors, fonts } from "@constants/globalStyles";
@@ -25,6 +25,8 @@ import { showMessage } from "react-native-flash-message";
 import { BookingService } from "@services/bookingService";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import BottomSheetModalProvider from "@gorhom/bottom-sheet";
+import { decodeDirectionsToCoordinates } from "@utils/mapUtils"; // Make sure this is imported
+import { GOOGLE_MAPS_API_KEY } from "@config/keys";
 
 // Search scoring utility
 const calculateSearchScore = (place, searchTerms, userLocation) => {
@@ -77,13 +79,10 @@ const calculateSearchScore = (place, searchTerms, userLocation) => {
   return score;
 };
 
-const BookingScreen = ({
-  navigation,
-  route,
-  savedLocations = {},
-  userLocation,
-}) => {
+const BookingScreen = ({ savedLocations = {}, userLocation }) => {
   // State management
+  const navigation = useNavigation();
+  const route = useRoute();
   const [activeInput, setActiveInput] = useState(null);
   const [pickupQuery, setPickupQuery] = useState("");
   const [dropoffQuery, setDropoffQuery] = useState("");
@@ -93,27 +92,81 @@ const BookingScreen = ({
   const [isLocating, setIsLocating] = useState(false);
   const [selectedPickup, setSelectedPickup] = useState(null);
   const [selectedDropoff, setSelectedDropoff] = useState(null);
-  const [isBooking, setIsBooking] = useState(false);
+  // const [isBooking, setIsBooking] = useState(false);
   const [routeInfo, setRouteInfo] = useState(null);
 
-  const bottomSheetRef = useRef(null);
-  const [isBottomSheetVisible, setIsBottomSheetVisible] = useState(false);
+  const [showConfirmationSheet, setShowConfirmationSheet] = useState(false);
+
   const insets = useSafeAreaInsets();
 
   const { getCurrentLocationWithAddress } = useLocationService();
 
+  const calculateRoute = async (pickup, dropoff) => {
+    try {
+      if (!pickup || !dropoff) return;
+
+      console.log("Calculating route between:", {
+        pickup: pickup.title,
+        dropoff: dropoff.title,
+      });
+
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/directions/json?origin=${pickup.latitude},${pickup.longitude}&destination=${dropoff.latitude},${dropoff.longitude}&mode=driving&key=${GOOGLE_MAPS_API_KEY}`,
+      );
+
+      const data = await response.json();
+
+      if (data.status !== "OK") {
+        throw new Error("Directions request failed");
+      }
+
+      const route = data.routes[0];
+      const leg = route.legs[0];
+
+      // Calculate fare (adjust formula as needed)
+      const baseFare = 30; // PHP
+      const ratePerKm = 5; // PHP per kilometer
+      const distanceInKm = leg.distance.value / 1000;
+      const additionalKm = Math.max(0, distanceInKm - 1);
+      const fare = Math.ceil(baseFare + additionalKm * ratePerKm);
+
+      const routeInfo = {
+        distance: distanceInKm,
+        duration: leg.duration.value / 60, // Convert to minutes
+        fare: fare,
+        coordinates: decodeDirectionsToCoordinates(data),
+      };
+
+      console.log("Route calculated:", routeInfo);
+      setRouteInfo(routeInfo);
+    } catch (error) {
+      console.error("Error calculating route:", error);
+      showMessage({
+        message: "Route Calculation Failed",
+        description: "Unable to calculate route. Please try again.",
+        type: "error",
+      });
+    }
+  };
+
   useEffect(() => {
-    if (route.params?.pickupLocation) {
-      const { pickupLocation } = route.params;
-      setSelectedPickup(pickupLocation);
-      setPickupQuery(pickupLocation.title || "");
+    if (selectedPickup && selectedDropoff) {
+      calculateRoute(selectedPickup, selectedDropoff);
     }
-    if (route.params?.dropoffLocation) {
-      const { dropoffLocation } = route.params;
-      setSelectedDropoff(dropoffLocation);
-      setDropoffQuery(dropoffLocation.title);
-    }
-  }, [route.params]);
+  }, [selectedPickup, selectedDropoff]);
+
+  // useEffect(() => {
+  //   if (route.params?.pickupLocation) {
+  //     const { pickupLocation } = route.params;
+  //     setSelectedPickup(pickupLocation);
+  //     setPickupQuery(pickupLocation.title || "");
+  //   }
+  //   if (route.params?.dropoffLocation) {
+  //     const { dropoffLocation } = route.params;
+  //     setSelectedDropoff(dropoffLocation);
+  //     setDropoffQuery(dropoffLocation.title);
+  //   }
+  // }, [route.params]);
 
   useEffect(() => {
     if (route.params?.pickupLocation) {
@@ -416,10 +469,14 @@ const BookingScreen = ({
     </View>
   );
 
-  const handleRouteConfirm = useCallback(() => {
-    console.log("Route confirm pressed");
+  const handleRouteConfirm = () => {
+    console.log("Route confirm pressed", {
+      hasPickup: !!selectedPickup,
+      hasDropoff: !!selectedDropoff,
+      hasRouteInfo: !!routeInfo,
+    });
 
-    if (!selectedPickup || !selectedDropoff || !routeInfo) {
+    if (!selectedPickup || !selectedDropoff) {
       showMessage({
         message: "Incomplete Route",
         description: "Please select both pickup and drop-off locations",
@@ -428,97 +485,72 @@ const BookingScreen = ({
       return;
     }
 
-    if (bottomSheetRef.current) {
-      setIsBottomSheetVisible(true);
-      bottomSheetRef.current.present();
-    }
-  }, [selectedPickup, selectedDropoff, routeInfo]);
-
-  // Handle final booking confirmation
-  const handleBookingConfirm = async ({ paymentMethod }) => {
-    if (isBooking) return;
-
-    setIsBooking(true);
-    try {
-      const bookingData = {
-        userId: user.uid,
-        pickup: {
-          latitude: selectedPickup.latitude,
-          longitude: selectedPickup.longitude,
-          address: selectedPickup.title,
-          description: selectedPickup.description,
-        },
-        dropoff: {
-          latitude: selectedDropoff.latitude,
-          longitude: selectedDropoff.longitude,
-          address: selectedDropoff.title,
-          description: selectedDropoff.description,
-        },
-        route: {
-          distance: routeInfo.distance,
-          duration: routeInfo.duration,
-          fare: routeInfo.fare,
-        },
-        passengerInfo: {
-          name: user.firstName + " " + user.lastName,
-          phone: user.phoneNumber,
-        },
-        payment: {
-          method: paymentMethod,
-          status: "pending",
-          amount: routeInfo.fare,
-        },
-      };
-
-      await BookingService.createBooking(bookingData);
-      handleSheetClose();
-
+    if (!routeInfo) {
       showMessage({
-        message: "Booking Created Successfully",
-        description: "Looking for a driver near you...",
-        type: "success",
-        duration: 4000,
+        message: "Route Not Ready",
+        description: "Please wait while we calculate the route",
+        type: "warning",
       });
-
-      // Navigate back to dashboard with the new booking
-      navigation.navigate("Dashboard", {
-        newBooking: true,
-        bookingData,
-      });
-    } catch (error) {
-      console.error("Error creating booking:", error);
-      showMessage({
-        message: "Booking Failed",
-        description: "Please try again",
-        type: "danger",
-      });
-    } finally {
-      setIsBooking(false);
+      return;
     }
+
+    console.log("Opening confirmation sheet with data:", {
+      pickup: selectedPickup,
+      dropoff: selectedDropoff,
+      routeInfo: routeInfo,
+    });
+
+    setShowConfirmationSheet(true);
   };
 
-  const handleSheetClose = useCallback(() => {
-    if (bottomSheetRef.current) {
-      setIsBottomSheetVisible(false);
-      bottomSheetRef.current.dismiss();
-    }
-  }, []);
+  useEffect(() => {
+    console.log("Confirmation sheet visibility changed:", {
+      showConfirmationSheet,
+      hasPickup: !!selectedPickup,
+      hasDropoff: !!selectedDropoff,
+      hasRouteInfo: !!routeInfo,
+    });
+  }, [showConfirmationSheet, selectedPickup, selectedDropoff, routeInfo]);
+
+  const handleConfirmationClose = () => {
+    setShowConfirmationSheet(false);
+  };
+
+  // Handle final booking confirmation
+  const handleBookingConfirm = (booking) => {
+    // Handle successful booking
+    navigation.navigate("Dashboard", {
+      newBooking: true,
+      bookingId: booking.id,
+    });
+  };
+
+  useEffect(() => {
+    console.log("showConfirmationSheet changed:", showConfirmationSheet);
+  }, [showConfirmationSheet]);
+
+  // const handleSheetClose = useCallback(() => {
+  //   if (bottomSheetRef.current) {
+  //     setIsBottomSheetVisible(false);
+  //     bottomSheetRef.current.dismiss();
+  //   }
+  // }, []);
 
   // Back handler
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      () => {
-        if (isBottomSheetVisible) {
-          handleSheetClose();
-          return true;
-        }
-        return false;
-      },
-    );
-
-    return () => backHandler.remove();
-  }, [isBottomSheetVisible, handleSheetClose]);
+  // useEffect(() => {
+  //   const backHandler = BackHandler.addEventListener(
+  //     "hardwareBackPress",
+  //     () => {
+  //       if (isBottomSheetVisible) {
+  //         handleSheetClose();
+  //         return true;
+  //       }
+  //       return false;
+  //     },
+  //   );
+  //
+  //   return () => backHandler.remove();
+  // }, [isBottomSheetVisible, handleSheetClose]);
 
   // Add to the end of your JSX right before the closing View tag
   // const renderConfirmButton = () => {
@@ -536,161 +568,156 @@ const BookingScreen = ({
   // };
 
   return (
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <SafeAreaView
-            style={[styles.bottomSheet, { paddingTop: insets.top }]}
-          >
-            <AppHeader />
-            <View style={styles.container}>
-              {/* Search Inputs */}
-              <View style={styles.headerSection}>
-                <Text style={styles.title}>Where to?</Text>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <SafeAreaView style={[styles.bottomSheet, { paddingTop: insets.top }]}>
+        <AppHeader />
+        <View style={styles.container}>
+          {/* Search Inputs */}
+          <View style={styles.headerSection}>
+            <Text style={styles.title}>Where to?</Text>
 
-                <TextInput
-                  mode="outlined"
-                  placeholder="Pick up from?"
-                  value={pickupQuery}
-                  autoFocus={true}
-                  onChangeText={(text) => handleSearch(text, "pickup")}
-                  onFocus={() => setActiveInput("pickup")}
-                  left={
-                    <TextInput.Icon
-                      icon={() => (
-                        <MaterialCommunityIcons
-                          name="map-marker"
-                          size={24}
-                          color={colors.primary}
-                        />
-                      )}
+            <TextInput
+              mode="outlined"
+              placeholder="Pick up from?"
+              value={pickupQuery}
+              autoFocus={true}
+              onChangeText={(text) => handleSearch(text, "pickup")}
+              onFocus={() => setActiveInput("pickup")}
+              left={
+                <TextInput.Icon
+                  icon={() => (
+                    <MaterialCommunityIcons
+                      name="map-marker"
+                      size={24}
+                      color={colors.primary}
                     />
-                  }
-                  style={styles.input}
+                  )}
                 />
+              }
+              style={styles.input}
+            />
 
-                <TextInput
-                  mode="outlined"
-                  placeholder="Drop off to?"
-                  value={dropoffQuery}
-                  onChangeText={(text) => handleSearch(text, "dropoff")}
-                  onFocus={() => setActiveInput("dropoff")}
-                  left={
-                    <TextInput.Icon
-                      icon={() => (
-                        <MaterialCommunityIcons
-                          name="map-marker-check"
-                          size={24}
-                          color={colors.secondary}
-                        />
-                      )}
+            <TextInput
+              mode="outlined"
+              placeholder="Drop off to?"
+              value={dropoffQuery}
+              onChangeText={(text) => handleSearch(text, "dropoff")}
+              onFocus={() => setActiveInput("dropoff")}
+              left={
+                <TextInput.Icon
+                  icon={() => (
+                    <MaterialCommunityIcons
+                      name="map-marker-check"
+                      size={24}
+                      color={colors.secondary}
                     />
-                  }
-                  style={styles.input}
+                  )}
                 />
+              }
+              style={styles.input}
+            />
 
-                {/* Use Current Location Button */}
-                <TouchableOpacity
-                  style={styles.currentLocationButton}
-                  onPress={handleCurrentLocationPress}
-                  disabled={isLocating}
-                >
-                  <MaterialCommunityIcons
-                    name="crosshairs-gps"
-                    size={24}
-                    color={isLocating ? colors.gray : colors.gray}
-                  />
-                  <Text
-                    style={[
-                      styles.currentLocationText,
-                      isLocating && styles.currentLocationTextDisabled,
-                    ]}
-                  >
-                    {isLocating
-                      ? "Getting location..."
-                      : "Use my current location"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <Divider style={styles.divider} />
-
-              {/* Scrollable Content Section */}
-              <ScrollView
-                style={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
-                bounces={true}
-                overScrollMode="never"
-              >
-                {/* Search Results Section */}
-                {(activeInput || searchResults.length > 0) && (
-                  <>
-                    {isLoading ? (
-                      <View style={styles.searchResultsSection}>
-                        <SearchSkeleton />
-                      </View>
-                    ) : searchResults.length > 0 ? (
-                      <View style={styles.searchResultsSection}>
-                        <Text style={styles.sectionTitle}>
-                          Search Results ({searchResults.length})
-                        </Text>
-                        {searchResults.map((item) => (
-                          <ResultItem
-                            key={item.id}
-                            item={item}
-                            onPress={handleLocationSelect}
-                          />
-                        ))}
-                      </View>
-                    ) : activeInput && !isLoading ? (
-                      <Text style={styles.noResults}>No places found</Text>
-                    ) : null}
-                  </>
-                )}
-                <View style={styles.savedPlacesSection}>
-                  <SavedPlaces />
-                </View>
-              </ScrollView>
-              {/* Bottom Button */}
-              <View style={styles.bottomButtonContainer}>
-                <TouchableOpacity
-                  style={styles.mapPickerLink}
-                  onPress={() =>
-                    navigation.navigate("LocationPicker", {
-                      initialPickup: selectedPickup,
-                      initialDropoff: selectedDropoff,
-                      activeInput,
-                    })
-                  }
-                >
-                  <MaterialCommunityIcons
-                    name="map-marker-radius"
-                    size={24}
-                    color={colors.textMid}
-                    style={styles.linkIcon}
-                  />
-                  <Text style={styles.mapPickerText}>Choose from map</Text>
-                </TouchableOpacity>
-                <CustomButton
-                  title="Confirm Route"
-                  onPress={handleRouteConfirm}
-                  disabled={!selectedPickup || !selectedDropoff}
-                  style={styles.confirmButton}
-                />
-              </View>
-              {/* Booking Confirmation Sheet */}
-              <BookingConfirmationSheet
-                bottomSheetRef={bottomSheetRef}
-                onClose={handleSheetClose}
-                onConfirm={handleBookingConfirm}
-                pickup={selectedPickup}
-                dropoff={selectedDropoff}
-                routeInfo={routeInfo}
-                isLoading={isBooking}
+            {/* Use Current Location Button */}
+            <TouchableOpacity
+              style={styles.currentLocationButton}
+              onPress={handleCurrentLocationPress}
+              disabled={isLocating}
+            >
+              <MaterialCommunityIcons
+                name="crosshairs-gps"
+                size={24}
+                color={isLocating ? colors.gray : colors.gray}
               />
+              <Text
+                style={[
+                  styles.currentLocationText,
+                  isLocating && styles.currentLocationTextDisabled,
+                ]}
+              >
+                {isLocating ? "Getting location..." : "Use my current location"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Divider style={styles.divider} />
+
+          {/* Scrollable Content Section */}
+          <ScrollView
+            style={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            bounces={true}
+            overScrollMode="never"
+          >
+            {/* Search Results Section */}
+            {(activeInput || searchResults.length > 0) && (
+              <>
+                {isLoading ? (
+                  <View style={styles.searchResultsSection}>
+                    <SearchSkeleton />
+                  </View>
+                ) : searchResults.length > 0 ? (
+                  <View style={styles.searchResultsSection}>
+                    <Text style={styles.sectionTitle}>
+                      Search Results ({searchResults.length})
+                    </Text>
+                    {searchResults.map((item) => (
+                      <ResultItem
+                        key={item.id}
+                        item={item}
+                        onPress={handleLocationSelect}
+                      />
+                    ))}
+                  </View>
+                ) : activeInput && !isLoading ? (
+                  <Text style={styles.noResults}>No places found</Text>
+                ) : null}
+              </>
+            )}
+            <View style={styles.savedPlacesSection}>
+              <SavedPlaces />
             </View>
-          </SafeAreaView>
-        </TouchableWithoutFeedback>
+          </ScrollView>
+          {/* Bottom Button */}
+          <View style={styles.bottomButtonContainer}>
+            <TouchableOpacity
+              style={styles.mapPickerLink}
+              onPress={() =>
+                navigation.navigate("LocationPicker", {
+                  initialPickup: selectedPickup,
+                  initialDropoff: selectedDropoff,
+                  activeInput,
+                })
+              }
+            >
+              <MaterialCommunityIcons
+                name="map-marker-radius"
+                size={24}
+                color={colors.textMid}
+                style={styles.linkIcon}
+              />
+              <Text style={styles.mapPickerText}>Choose from map</Text>
+            </TouchableOpacity>
+            <CustomButton
+              title="Confirm Route"
+              onPress={handleRouteConfirm}
+              disabled={!selectedPickup || !selectedDropoff}
+              style={styles.confirmButton}
+            />
+          </View>
+        </View>
+        {/* Booking Confirmation Sheet */}
+        <BookingConfirmationSheet
+          visible={showConfirmationSheet}
+          onDismiss={() => setShowConfirmationSheet(false)}
+          pickup={selectedPickup}
+          dropoff={selectedDropoff}
+          routeInfo={routeInfo}
+          navigation={navigation}
+        />
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 };
 

@@ -72,7 +72,7 @@ export const DirectionsService = {
 // Calculate fare based on distance
 const calculateFare = (distanceInMeters) => {
   try {
-    const baseFare = 40; // PHP base fare
+    const baseFare = 30; // PHP base fare
     const ratePerKm = 5; // PHP per kilometer after first kilometer
     const distanceInKm = distanceInMeters / 1000;
     const additionalKm = Math.max(0, distanceInKm - 1);
