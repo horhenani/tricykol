@@ -36,5 +36,10 @@ yarn-error.*
 *.tsbuildinfo
 
 api-keys/*
-# google-services.json
-# GoogleService-Info.plist
+google-services.json
+GoogleService-Info.plist
+gs.txt
+eas.json
+service-account.json
+tricykol-4211f-default-rtdb-export.json
+
